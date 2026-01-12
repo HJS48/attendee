@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 import dateutil.parser
 import requests
 from celery import shared_task
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from django.db import transaction
 from django.utils import timezone
 
@@ -318,11 +320,38 @@ class GoogleCalendarSyncHandler(CalendarSyncHandler):
         return
 
     def _get_access_token(self) -> str:
-        """Get a fresh access token using the refresh token."""
+        """Get a fresh access token using refresh token or service account."""
         credentials = self.calendar.get_credentials()
         if not credentials:
             raise CalendarAPIAuthenticationError("No credentials found for calendar")
 
+        # Route based on auth type
+        if credentials.get("auth_type") == "service_account":
+            return self._get_service_account_token(credentials)
+        else:
+            return self._get_oauth_token(credentials)
+
+    def _get_service_account_token(self, credentials: dict) -> str:
+        """Get access token using service account impersonation."""
+        try:
+            sa_key = credentials.get("service_account_key")
+            impersonate_email = credentials.get("impersonate_email")
+
+            if not sa_key or not impersonate_email:
+                raise CalendarAPIAuthenticationError("Missing service_account_key or impersonate_email")
+
+            sa_credentials = service_account.Credentials.from_service_account_info(
+                sa_key,
+                scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+                subject=impersonate_email
+            )
+            sa_credentials.refresh(GoogleAuthRequest())
+            return sa_credentials.token
+        except Exception as e:
+            raise CalendarAPIAuthenticationError(f"Service account auth failed: {e}")
+
+    def _get_oauth_token(self, credentials: dict) -> str:
+        """Get access token using OAuth refresh token."""
         refresh_token = credentials.get("refresh_token")
         client_secret = credentials.get("client_secret")
 

@@ -1892,11 +1892,29 @@ class PatchBotSerializer(BotValidationMixin, serializers.Serializer):
 class CreateCalendarSerializer(serializers.Serializer):
     platform_uuid = serializers.CharField(help_text="The UUID of the calendar on the calendar platform. Specify only for non-primary calendars.", required=False, default=None)
     client_id = serializers.CharField(help_text="The client ID for the calendar platform authentication")
-    client_secret = serializers.CharField(help_text="The client secret for the calendar platform authentication")
-    refresh_token = serializers.CharField(help_text="The refresh token for accessing the calendar platform")
+    client_secret = serializers.CharField(help_text="The client secret for the calendar platform authentication (required for oauth auth_type)", required=False, default=None)
+    refresh_token = serializers.CharField(help_text="The refresh token for accessing the calendar platform (required for oauth auth_type)", required=False, default=None)
     platform = serializers.ChoiceField(choices=CalendarPlatform.choices, help_text="The calendar platform (google or microsoft)")
     metadata = serializers.JSONField(help_text="JSON object containing metadata to associate with the calendar", required=False, default=None)
     deduplication_key = serializers.CharField(help_text="Optional key for deduplicating calendars. If a calendar with this key already exists in the project, the new calendar will not be created and an error will be returned.", required=False, default=None)
+
+    # Service account authentication fields
+    auth_type = serializers.ChoiceField(
+        choices=[("oauth", "OAuth"), ("service_account", "Service Account")],
+        default="oauth",
+        required=False,
+        help_text="Authentication type: 'oauth' (default) or 'service_account'"
+    )
+    service_account_key = serializers.JSONField(
+        required=False,
+        default=None,
+        help_text="Service account key JSON (required for service_account auth_type)"
+    )
+    impersonate_email = serializers.CharField(
+        required=False,
+        default=None,
+        help_text="Email to impersonate (required for service_account auth_type)"
+    )
 
     def validate_metadata(self, value):
         return _validate_metadata_attribute(value)
@@ -1912,17 +1930,30 @@ class CreateCalendarSerializer(serializers.Serializer):
         return value.strip()
 
     def validate_client_secret(self, value):
-        if not value or len(value.strip()) == 0:
+        # Allow None for service_account auth_type (validated in validate())
+        if value is None:
+            return value
+        if len(value.strip()) == 0:
             raise serializers.ValidationError("Client secret cannot be empty")
         return value.strip()
 
     def validate_refresh_token(self, value):
-        if not value or len(value.strip()) == 0:
+        # Allow None for service_account auth_type (validated in validate())
+        if value is None:
+            return value
+        if len(value.strip()) == 0:
             raise serializers.ValidationError("Refresh token cannot be empty")
         return value.strip()
 
+    def validate_impersonate_email(self, value):
+        if value is None:
+            return value
+        if len(value.strip()) == 0:
+            raise serializers.ValidationError("Impersonate email cannot be empty")
+        return value.strip()
+
     def validate(self, data):
-        """Validate that no unexpected fields are provided."""
+        """Validate that no unexpected fields are provided and auth fields are correct."""
         # Get all the field names defined in this serializer
         expected_fields = set(self.fields.keys())
 
@@ -1934,6 +1965,20 @@ class CreateCalendarSerializer(serializers.Serializer):
 
         if unexpected_fields:
             raise serializers.ValidationError(f"Unexpected field(s): {', '.join(sorted(unexpected_fields))}. Allowed fields are: {', '.join(sorted(expected_fields))}")
+
+        # Validate auth type specific fields
+        auth_type = data.get("auth_type", "oauth")
+
+        if auth_type == "service_account":
+            if not data.get("service_account_key"):
+                raise serializers.ValidationError("service_account_key is required for service_account auth_type")
+            if not data.get("impersonate_email"):
+                raise serializers.ValidationError("impersonate_email is required for service_account auth_type")
+        else:  # oauth
+            if not data.get("client_secret"):
+                raise serializers.ValidationError("client_secret is required for oauth auth_type")
+            if not data.get("refresh_token"):
+                raise serializers.ValidationError("refresh_token is required for oauth auth_type")
 
         return data
 

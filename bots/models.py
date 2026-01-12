@@ -316,6 +316,18 @@ class Calendar(models.Model):
     client_id = models.CharField(max_length=255)
     platform_uuid = models.CharField(max_length=1024, null=True, blank=True)
 
+    AUTH_TYPE_OAUTH = "oauth"
+    AUTH_TYPE_SERVICE_ACCOUNT = "service_account"
+    AUTH_TYPE_CHOICES = [
+        (AUTH_TYPE_OAUTH, "OAuth"),
+        (AUTH_TYPE_SERVICE_ACCOUNT, "Service Account"),
+    ]
+    auth_type = models.CharField(
+        max_length=20,
+        choices=AUTH_TYPE_CHOICES,
+        default=AUTH_TYPE_OAUTH,
+    )
+
     last_attempted_sync_at = models.DateTimeField(null=True, blank=True)
     last_successful_sync_at = models.DateTimeField(null=True, blank=True)
     last_successful_sync_time_window_start = models.DateTimeField(null=True, blank=True)
