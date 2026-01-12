@@ -800,8 +800,9 @@ class WebBotAdapter(BotAdapter):
             self.stop_recording_screen_callback()
 
         try:
-            logger.info("disable media sending")
-            self.driver.execute_script("window.ws?.disableMediaSending();")
+            if self.driver:
+                logger.info("disable media sending")
+                self.driver.execute_script("window.ws?.disableMediaSending();")
         except Exception as e:
             logger.info(f"Error during media sending disable: {e}")
 
@@ -831,6 +832,15 @@ class WebBotAdapter(BotAdapter):
 
         if self.debug_screen_recorder:
             self.debug_screen_recorder.stop()
+
+        # Stop the virtual display (Xvfb) if we created one
+        display = getattr(self, 'display', None)
+        if display:
+            try:
+                display.stop()
+                logger.info("Stopped virtual display")
+            except Exception as e:
+                logger.info(f"Error stopping virtual display: {e}")
 
         # Properly shutdown the websocket server
         if self.websocket_server:
