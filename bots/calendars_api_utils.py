@@ -31,11 +31,33 @@ def create_calendar(data, project):
 
     try:
         with transaction.atomic():
-            # Create the calendar instance
-            calendar = Calendar(project=project, platform=validated_data["platform"], client_id=validated_data["client_id"], state=CalendarStates.CONNECTED, metadata=validated_data.get("metadata"), deduplication_key=validated_data.get("deduplication_key"), platform_uuid=validated_data.get("platform_uuid"))
+            # Determine auth type
+            auth_type = validated_data.get("auth_type", "oauth")
 
-            # Set encrypted credentials (client_secret and refresh_token)
-            credentials = {"client_secret": validated_data["client_secret"], "refresh_token": validated_data["refresh_token"]}
+            # Create the calendar instance
+            calendar = Calendar(
+                project=project,
+                platform=validated_data["platform"],
+                client_id=validated_data["client_id"],
+                state=CalendarStates.CONNECTED,
+                metadata=validated_data.get("metadata"),
+                deduplication_key=validated_data.get("deduplication_key"),
+                platform_uuid=validated_data.get("platform_uuid"),
+                auth_type=auth_type,
+            )
+
+            # Set encrypted credentials based on auth type
+            if auth_type == "service_account":
+                credentials = {
+                    "auth_type": "service_account",
+                    "service_account_key": validated_data["service_account_key"],
+                    "impersonate_email": validated_data["impersonate_email"],
+                }
+            else:
+                credentials = {
+                    "client_secret": validated_data["client_secret"],
+                    "refresh_token": validated_data["refresh_token"],
+                }
             calendar.set_credentials(credentials)
 
             # Save the calendar
