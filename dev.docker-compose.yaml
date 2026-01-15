@@ -12,7 +12,7 @@ services:
       - REDIS_URL=redis://redis:6379/5
       - DJANGO_SETTINGS_MODULE=attendee.settings.development
       - ENABLE_CHROME_SANDBOX=false
-    command: "celery -A attendee worker -l INFO --concurrency=16"
+    command: "celery -A attendee worker -l INFO --concurrency=2"
 
   attendee-scheduler-local:
     build: ./
@@ -43,6 +43,9 @@ services:
       - POSTGRES_HOST=postgres
       - REDIS_URL=redis://redis:6379/5
       - DJANGO_SETTINGS_MODULE=attendee.settings.development
+      - DISABLE_RATE_LIMITING=true
+      - USER_THROTTLE_RATE=100000/hour
+      - ANON_THROTTLE_RATE=100000/hour
     command: python manage.py runserver 0.0.0.0:8000
     entrypoint: []
 

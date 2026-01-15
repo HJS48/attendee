@@ -2013,6 +2013,7 @@ class CalendarSerializer(serializers.ModelSerializer):
             "platform",
             "client_id",
             "platform_uuid",
+            "auth_type",
             "state",
             "metadata",
             "deduplication_key",
