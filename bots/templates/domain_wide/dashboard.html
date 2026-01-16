@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Meeting Recorder - Health Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+        h1 { margin-bottom: 20px; font-size: 24px; }
+        h2 { font-size: 16px; margin-bottom: 12px; color: #666; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .refresh-btn {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .refresh-btn:hover { background: #0056b3; }
+        .last-updated { color: #888; font-size: 13px; }
+
+        /* All-time stats row */
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            flex: 1;
+            text-align: center;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .stat-card .arrow {
+            font-size: 20px;
+            color: #ccc;
+            margin: 0 -8px;
+        }
+        .stat-card.highlight .value { color: #28a745; }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 16px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .card-header h2 { margin: 0; }
+        .card-header input[type="date"] {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th { font-weight: 600; color: #666; background: #fafafa; }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-error { background: #f8d7da; color: #721c24; }
+        .badge-info { background: #d1ecf1; color: #0c5460; }
+        .badge-secondary { background: #e2e3e5; color: #383d41; }
+
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            padding: 12px 0;
+        }
+        .pipeline-col {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+        .pipeline-col h3 {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .metric-label {
+            font-size: 13px;
+            color: #555;
+        }
+        .metric-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        .metric-error {
+            color: #dc3545;
+        }
+        #bot-health-breakdown .metric-row {
+            font-size: 12px;
+        }
+        #bot-health-breakdown .badge {
+            margin-right: 4px;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 16px;
+        }
+
+        .loading { color: #888; font-style: italic; }
+
+        .url-cell {
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .events-table-container {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .count-badge {
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Meeting Recorder Health Dashboard</h1>
+            <div class="header-right">
+                <span class="last-updated" id="last-updated">Loading...</span>
+                <button class="refresh-btn" onclick="loadData()">Refresh</button>
+            </div>
+        </div>
+
+        <!-- Section 1: All-Time Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="value" id="total-events">--</div>
+                <div class="label">Total Events</div>
+            </div>
+            <div class="stat-card">
+                <div class="arrow">-></div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="events-with-url">--</div>
+                <div class="label">Events with URL</div>
+            </div>
+            <div class="stat-card">
+                <div class="arrow">-></div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="unique-events">--</div>
+                <div class="label">Unique Events (deduped)</div>
+            </div>
+            <div class="stat-card">
+                <div class="arrow">-></div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="active-bots">--</div>
+                <div class="label">Active Bots</div>
+            </div>
+            <div class="stat-card">
+                <div class="arrow">-></div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="value" id="coverage-rate">--</div>
+                <div class="label">Coverage</div>
+            </div>
+        </div>
+
+        <!-- Section 2: Bot States (All-Time) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Bot States (Active)</h2>
+                <span style="color:#888;font-size:13px;">Total bots in DB: <span id="total-bots">--</span></span>
+            </div>
+            <table id="states-table">
+                <thead>
+                    <tr>
+                        <th>State</th>
+                        <th>Count</th>
+                        <th>Percentage</th>
+                    </tr>
+                </thead>
+                <tbody id="states-body">
+                    <tr><td colspan="3" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Section 3: Pipeline Status (Per Date) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Pipeline Status</h2>
+                <input type="date" id="date-picker" onchange="loadDateData()">
+            </div>
+            <div class="pipeline-grid">
+                <div class="pipeline-col">
+                    <h3>Pipeline</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Events</span>
+                        <span class="metric-value" id="pipe-events">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Bots Created</span>
+                        <span class="metric-value" id="pipe-bots">--</span>
+                    </div>
+                </div>
+                <div class="pipeline-col">
+                    <h3>Bot Health</h3>
+                    <div id="bot-health-breakdown">
+                        <span class="loading">Loading...</span>
+                    </div>
+                </div>
+                <div class="pipeline-col">
+                    <h3>Recordings</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Complete</span>
+                        <span class="metric-value" id="recordings-complete">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Failed</span>
+                        <span class="metric-value metric-error" id="recordings-failed">--</span>
+                    </div>
+                </div>
+                <div class="pipeline-col">
+                    <h3>Transcriptions</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Complete</span>
+                        <span class="metric-value" id="transcriptions-complete">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Failed</span>
+                        <span class="metric-value metric-error" id="transcriptions-failed">--</span>
+                    </div>
+                </div>
+                <div class="pipeline-col">
+                    <h3>Durations</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Avg Meeting</span>
+                        <span class="metric-value" id="avg-meeting-duration">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Avg Recording</span>
+                        <span class="metric-value" id="avg-recording-duration">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 4: Events & Bots List (Per Date) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Events & Bots <span class="count-badge" id="events-count">0</span></h2>
+                <span style="color:#666;font-size:13px;">Unique meetings with URL (deduped)</span>
+            </div>
+            <div class="events-table-container">
+                <table id="events-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Title</th>
+                            <th>Meeting URL</th>
+                            <th>Calendar Owner</th>
+                            <th>Bot ID</th>
+                            <th>Bot Status</th>
+                            <th>Attendees</th>
+                        </tr>
+                    </thead>
+                    <tbody id="events-body">
+                        <tr><td colspan="7" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Recent Failures -->
+        <div class="card">
+            <h2>Recent Failures (Last 7 Days)</h2>
+            <table id="failures-table">
+                <thead>
+                    <tr>
+                        <th>Bot ID</th>
+                        <th>Reason</th>
+                        <th>Meeting URL</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody id="failures-body">
+                    <tr><td colspan="4" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Set default date to today
+        document.getElementById('date-picker').valueAsDate = new Date();
+
+        async function loadData() {
+            await Promise.all([loadSummary(), loadDateData(), loadFailures()]);
+        }
+
+        async function loadSummary() {
+            try {
+                const summary = await fetch('/dashboard/api/summary/').then(r => r.json());
+
+                // Update timestamp
+                document.getElementById('last-updated').textContent =
+                    `Updated: ${new Date(summary.timestamp).toLocaleTimeString()}`;
+
+                // All-time stats
+                document.getElementById('total-events').textContent = summary.all_time.total_events.toLocaleString();
+                document.getElementById('events-with-url').textContent = summary.all_time.events_with_url.toLocaleString();
+                document.getElementById('unique-events').textContent = summary.all_time.unique_events_deduped.toLocaleString();
+                document.getElementById('active-bots').textContent = summary.all_time.active_bots.toLocaleString();
+                document.getElementById('total-bots').textContent = summary.all_time.total_bots.toLocaleString();
+                document.getElementById('coverage-rate').textContent = `${summary.all_time.coverage_rate}%`;
+
+                // Bot states table
+                const statesBody = document.getElementById('states-body');
+                const total = summary.all_time.active_bots || 1;
+                statesBody.innerHTML = Object.entries(summary.bot_states)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([state, count]) => `
+                        <tr>
+                            <td><span class="badge ${getBadgeClass(state)}">${state}</span></td>
+                            <td>${count.toLocaleString()}</td>
+                            <td>${(count / total * 100).toFixed(1)}%</td>
+                        </tr>
+                    `).join('');
+
+            } catch (error) {
+                console.error('Failed to load summary:', error);
+            }
+        }
+
+        async function loadDateData() {
+            const date = document.getElementById('date-picker').value;
+
+            try {
+                const [pipeline, events] = await Promise.all([
+                    fetch(`/dashboard/api/pipeline/?date=${date}`).then(r => r.json()),
+                    fetch(`/dashboard/api/events/?date=${date}`).then(r => r.json()),
+                ]);
+
+                // Pipeline basics
+                document.getElementById('pipe-events').textContent = pipeline.unique_events;
+                document.getElementById('pipe-bots').textContent = pipeline.bots_created;
+
+                // Bot health breakdown
+                const healthDiv = document.getElementById('bot-health-breakdown');
+                const states = Object.entries(pipeline.bot_states || {});
+                if (states.length === 0) {
+                    healthDiv.innerHTML = '<span style="color:#888;font-size:12px;">No bots</span>';
+                } else {
+                    healthDiv.innerHTML = states
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([state, count]) => `
+                            <div class="metric-row">
+                                <span class="badge ${getBadgeClass(state)}">${state}</span>
+                                <span>${count}</span>
+                            </div>
+                        `).join('');
+                }
+
+                // Recordings
+                document.getElementById('recordings-complete').textContent = pipeline.recordings?.complete ?? '--';
+                document.getElementById('recordings-failed').textContent = pipeline.recordings?.failed ?? '--';
+
+                // Transcriptions
+                document.getElementById('transcriptions-complete').textContent = pipeline.transcriptions?.complete ?? '--';
+                document.getElementById('transcriptions-failed').textContent = pipeline.transcriptions?.failed ?? '--';
+
+                // Durations
+                document.getElementById('avg-meeting-duration').textContent =
+                    pipeline.avg_meeting_duration_mins ? `${pipeline.avg_meeting_duration_mins} min` : '--';
+                document.getElementById('avg-recording-duration').textContent =
+                    pipeline.avg_recording_duration_mins ? `${pipeline.avg_recording_duration_mins} min` : '--';
+
+                // Events list
+                document.getElementById('events-count').textContent = events.count;
+                const eventsBody = document.getElementById('events-body');
+
+                if (events.events.length === 0) {
+                    eventsBody.innerHTML = '<tr><td colspan="7">No events for this date</td></tr>';
+                } else {
+                    eventsBody.innerHTML = events.events.map(e => `
+                        <tr>
+                            <td>${e.time}</td>
+                            <td>${escapeHtml(e.title)}</td>
+                            <td class="url-cell" title="${escapeHtml(e.meeting_url)}">${e.meeting_url}</td>
+                            <td>${escapeHtml(e.calendar_owner)}</td>
+                            <td>${e.bot_id ? `<code>${e.bot_id.substring(0, 8)}...</code>` : '<span class="badge badge-secondary">None</span>'}</td>
+                            <td>${e.bot_status ? `<span class="badge ${getBadgeClass(e.bot_status)}">${e.bot_status}</span>` : '-'}</td>
+                            <td>${e.attendees_count}</td>
+                        </tr>
+                    `).join('');
+                }
+
+            } catch (error) {
+                console.error('Failed to load date data:', error);
+            }
+        }
+
+        async function loadFailures() {
+            try {
+                const failures = await fetch('/dashboard/api/failures/').then(r => r.json());
+
+                const failuresBody = document.getElementById('failures-body');
+                if (failures.failures.length === 0) {
+                    failuresBody.innerHTML = '<tr><td colspan="4">No failures in the last 7 days</td></tr>';
+                } else {
+                    failuresBody.innerHTML = failures.failures.slice(0, 20).map(f => `
+                        <tr>
+                            <td><code>${f.bot_id.substring(0, 8)}...</code></td>
+                            <td><span class="badge badge-error">${f.event_sub_type_name}</span></td>
+                            <td class="url-cell" title="${escapeHtml(f.meeting_url)}">${f.meeting_url || '-'}</td>
+                            <td>${new Date(f.timestamp).toLocaleString()}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load failures:', error);
+            }
+        }
+
+        function getBadgeClass(state) {
+            if (state === 'Ended') return 'badge-success';
+            if (state.includes('Error') || state.includes('Fatal')) return 'badge-error';
+            if (state === 'Scheduled' || state.includes('Joining')) return 'badge-info';
+            return 'badge-warning';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initial load
+        loadData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>

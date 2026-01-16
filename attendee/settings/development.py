@@ -2,6 +2,11 @@ import os
 
 from .base import *
 
+# Add domain-wide calendar integration module
+INSTALLED_APPS = INSTALLED_APPS + [
+    'bots.domain_wide',
+]
+
 DEBUG = True
 SITE_DOMAIN = "localhost:8000"
 ALLOWED_HOSTS = ["tendee-stripe-hooks.ngrok.io", "localhost", "wayfarrow.info"]

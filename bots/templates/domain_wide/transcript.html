@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }} - Transcript</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="meeting-id" content="{{ meeting_id }}">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .meeting-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .meeting-meta {
+            color: #666;
+            font-size: 14px;
+        }
+        .meta-separator {
+            margin: 0 8px;
+            color: #ccc;
+        }
+
+        /* Summary Section */
+        .summary-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .section-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .summary-text {
+            color: #555;
+            white-space: pre-wrap;
+        }
+
+        /* Main Content - Video + Transcript */
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        .video-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .video-section video {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+        }
+
+        /* Transcript */
+        .transcript-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .transcript-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            position: sticky;
+            top: 0;
+            background: white;
+            padding-bottom: 8px;
+        }
+        .transcript-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .transcript-segment {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .transcript-segment:hover {
+            background: #e9ecef;
+        }
+        .transcript-segment.active {
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+        }
+        .segment-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .speaker-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .speaker-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .segment-time {
+            color: #888;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .segment-text {
+            font-size: 14px;
+            color: #444;
+        }
+
+        /* Speaker colors */
+        .speaker-color-0 { background: #4285f4; }
+        .speaker-color-1 { background: #ea4335; }
+        .speaker-color-2 { background: #34a853; }
+        .speaker-color-3 { background: #fbbc04; }
+        .speaker-color-4 { background: #9c27b0; }
+        .speaker-color-5 { background: #ff5722; }
+        .speaker-color-6 { background: #00bcd4; }
+        .speaker-color-7 { background: #795548; }
+
+        /* Action Items */
+        .action-items-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .action-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .action-item:last-child {
+            border-bottom: none;
+        }
+        .ai-check {
+            color: #888;
+            font-size: 18px;
+        }
+        .ai-task {
+            flex: 1;
+        }
+        .ai-assignee {
+            color: #666;
+            font-size: 13px;
+        }
+        .ai-due {
+            color: #888;
+            font-size: 12px;
+        }
+        .no-action-items {
+            color: #888;
+            font-style: italic;
+        }
+
+        /* Copy Button */
+        .copy-btn {
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .copy-btn:hover {
+            background: #f5f5f5;
+            border-color: #bbb;
+        }
+        .copy-btn.copied {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="meeting-title">{{ title }}</h1>
+            <div class="meeting-meta">
+                <span class="meta-date">{{ started_at }}</span>
+                <span class="meta-separator">&bull;</span>
+                <span class="meta-duration">{{ duration }}</span>
+                <span class="meta-separator">&bull;</span>
+                <span class="meta-participants">{{ participant_names }}</span>
+            </div>
+        </header>
+
+        {% if summary %}
+        <section class="summary-section">
+            <div class="section-header">
+                <h2>Call Summary</h2>
+                <button class="copy-btn" onclick="copyToClipboard(this, 'summary-text')">
+                    <span>&#128203;</span> Copy
+                </button>
+            </div>
+            <p class="summary-text" id="summary-text">{{ summary }}</p>
+        </section>
+        {% endif %}
+
+        <div class="main-content">
+            {% if recording_url %}
+            <div class="video-section">
+                <video id="video-player" controls preload="metadata">
+                    <source src="{{ recording_url }}" type="video/mp4">
+                    Your browser does not support the video element.
+                </video>
+            </div>
+            {% endif %}
+
+            <div class="transcript-section">
+                <div class="transcript-header">
+                    <h2>Transcript</h2>
+                    <button class="copy-btn" onclick="copyTranscript(this)">
+                        <span>&#128203;</span> Copy
+                    </button>
+                </div>
+                <div class="transcript-container" id="transcript-container">
+                    {% for segment in transcript %}
+                    <div class="transcript-segment"
+                         data-start="{{ segment.start_ms }}"
+                         data-end="{{ segment.end_ms }}"
+                         onclick="seekTo({{ segment.start_ms }})">
+                        <div class="segment-header">
+                            <span class="speaker-dot speaker-color-{{ segment.speaker_color }}"></span>
+                            <span class="speaker-name">{{ segment.speaker_name|default:"Unknown" }}</span>
+                            <span class="segment-time">{{ segment.formatted_time }}</span>
+                        </div>
+                        <div class="segment-text">{{ segment.text }}</div>
+                    </div>
+                    {% empty %}
+                    <p style="color: #888; font-style: italic;">No transcript available</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <section class="action-items-section">
+            <div class="section-header">
+                <h2>Action Items</h2>
+                <button class="copy-btn" onclick="copyActionItems(this)">
+                    <span>&#128203;</span> Copy
+                </button>
+            </div>
+            <div class="action-items-list">
+                {% for item in action_items %}
+                <div class="action-item">
+                    <span class="ai-check">&#9744;</span>
+                    <div class="ai-task">
+                        {{ item.task }}
+                        {% if item.assignee %}
+                        <div class="ai-assignee">Assigned to: {{ item.assignee }}</div>
+                        {% endif %}
+                    </div>
+                    <span class="ai-due">{{ item.due|default:"No due date" }}</span>
+                </div>
+                {% empty %}
+                <p class="no-action-items">No action items identified</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Format timestamp for display
+        function formatTimestamp(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `[${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}]`;
+        }
+
+        // Seek video to timestamp
+        function seekTo(ms) {
+            const video = document.getElementById('video-player');
+            if (video) {
+                video.currentTime = ms / 1000;
+                video.play();
+            }
+        }
+
+        // Highlight active transcript segment based on video time
+        const video = document.getElementById('video-player');
+        if (video) {
+            video.addEventListener('timeupdate', function() {
+                const currentMs = video.currentTime * 1000;
+                document.querySelectorAll('.transcript-segment').forEach(seg => {
+                    const start = parseInt(seg.dataset.start);
+                    const end = parseInt(seg.dataset.end);
+                    if (currentMs >= start && currentMs < end) {
+                        seg.classList.add('active');
+                        // Auto-scroll to active segment
+                        seg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    } else {
+                        seg.classList.remove('active');
+                    }
+                });
+            });
+        }
+
+        // Copy to clipboard utilities
+        function copyToClipboard(btn, elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '<span>&#10003;</span> Copied!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<span>&#128203;</span> Copy';
+                }, 2000);
+            });
+        }
+
+        function copyTranscript(btn) {
+            const segments = document.querySelectorAll('.transcript-segment');
+            let text = '';
+            segments.forEach(seg => {
+                const speaker = seg.querySelector('.speaker-name').textContent;
+                const time = seg.querySelector('.segment-time').textContent;
+                const content = seg.querySelector('.segment-text').textContent;
+                text += `${time} ${speaker}: ${content}\n\n`;
+            });
+            navigator.clipboard.writeText(text.trim()).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '<span>&#10003;</span> Copied!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<span>&#128203;</span> Copy';
+                }, 2000);
+            });
+        }
+
+        function copyActionItems(btn) {
+            const items = document.querySelectorAll('.action-item');
+            let text = 'Action Items:\n';
+            items.forEach(item => {
+                const task = item.querySelector('.ai-task').textContent.trim();
+                text += `- ${task}\n`;
+            });
+            navigator.clipboard.writeText(text.trim()).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '<span>&#10003;</span> Copied!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<span>&#128203;</span> Copy';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
