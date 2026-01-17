@@ -2,6 +2,7 @@ import logging
 import signal
 import time
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, models, transaction
 from django.db.models import Q
@@ -14,6 +15,13 @@ from bots.tasks.launch_scheduled_bot_task import launch_scheduled_bot
 from bots.tasks.refresh_zoom_oauth_connection_task import enqueue_refresh_zoom_oauth_connection_task
 from bots.tasks.sync_calendar_task import enqueue_sync_calendar_task
 from bots.tasks.sync_zoom_oauth_connection_task import enqueue_sync_zoom_oauth_connection_task
+
+# Check if domain_wide module is installed
+try:
+    from bots.domain_wide.tasks import renew_expiring_watch_channels
+    DOMAIN_WIDE_ENABLED = True
+except ImportError:
+    DOMAIN_WIDE_ENABLED = False
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +60,8 @@ class Command(BaseCommand):
                 self._run_periodic_zoom_oauth_connection_syncs()
                 self._run_periodic_zoom_oauth_connection_token_refreshs()
                 self._run_autopay_tasks()
+                if DOMAIN_WIDE_ENABLED:
+                    self._run_watch_channel_renewals()
             except Exception:
                 log.exception("Scheduler cycle failed")
             finally:
@@ -78,10 +88,12 @@ class Command(BaseCommand):
     def _run_periodic_calendar_syncs(self):
         """
         Run periodic calendar syncs.
-        Launch sync tasks for calendars that haven't had a sync task enqueued in the last 30 minutes.
+        Launch sync tasks for calendars that haven't had a sync task enqueued recently.
+        Interval is configurable via CALENDAR_SYNC_INTERVAL_MINUTES setting (default: 30).
         """
         now = timezone.now()
-        cutoff_time = now - timezone.timedelta(minutes=30)
+        sync_interval = getattr(settings, 'CALENDAR_SYNC_INTERVAL_MINUTES', 30)
+        cutoff_time = now - timezone.timedelta(minutes=sync_interval)
 
         # Find connected calendars that haven't had a sync task enqueued in the last 30 minutes
         calendars = Calendar.objects.filter(
@@ -200,3 +212,20 @@ class Command(BaseCommand):
             enqueue_autopay_charge_task(organization)
 
         log.info("Enqueued %d autopay tasks", len(organizations))
+
+    def _run_watch_channel_renewals(self):
+        """
+        Check and renew expiring Google Calendar watch channels.
+        Watch channels expire after 7 days (Google's limit).
+        We renew channels that expire within 48 hours.
+        """
+        from bots.domain_wide.models import GoogleWatchChannel
+
+        threshold = timezone.now() + timezone.timedelta(hours=48)
+        expiring_count = GoogleWatchChannel.objects.filter(expiration__lt=threshold).count()
+
+        if expiring_count > 0:
+            log.info(f"Found {expiring_count} expiring watch channels, triggering renewal task")
+            renew_expiring_watch_channels.delay()
+        else:
+            log.debug("No watch channels need renewal")

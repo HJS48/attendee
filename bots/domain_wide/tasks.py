@@ -116,3 +116,59 @@ def sync_meeting_to_supabase(bot_id: str):
     else:
         logger.warning(f"Failed to sync meeting to Supabase for bot {bot_id}")
         return {'status': 'error', 'reason': 'upsert failed'}
+
+
+@shared_task
+def renew_expiring_watch_channels():
+    """
+    Renew Google Calendar watch channels that are expiring within 48 hours.
+
+    Watch channels have a max lifetime of 7 days (Google's limit).
+    This task renews channels before they expire to maintain push notifications.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from bots.domain_wide.models import GoogleWatchChannel
+    from bots.domain_wide.management.commands.manage_watch_channels import (
+        create_watch_channel,
+        stop_watch_channel,
+    )
+
+    threshold = timezone.now() + timedelta(hours=48)
+    expiring = GoogleWatchChannel.objects.filter(expiration__lt=threshold)
+
+    if not expiring.exists():
+        logger.info("No watch channels need renewal")
+        return {'status': 'success', 'renewed': 0, 'failed': 0}
+
+    logger.info(f"Found {expiring.count()} watch channels to renew")
+
+    success_count = 0
+    fail_count = 0
+
+    for channel in expiring:
+        try:
+            # Stop existing channel
+            stop_watch_channel(channel)
+
+            # Create new channel
+            channel_info = create_watch_channel(channel.user_email)
+
+            # Update database record
+            channel.channel_id = channel_info['channel_id']
+            channel.resource_id = channel_info['resource_id']
+            channel.expiration = channel_info['expiration']
+            channel.save()
+
+            logger.info(
+                f"Renewed watch channel for {channel.user_email}, "
+                f"expires {channel_info['expiration'].strftime('%Y-%m-%d %H:%M UTC')}"
+            )
+            success_count += 1
+
+        except Exception as e:
+            logger.exception(f"Failed to renew watch channel for {channel.user_email}: {e}")
+            fail_count += 1
+
+    logger.info(f"Watch channel renewal complete: {success_count} renewed, {fail_count} failed")
+    return {'status': 'success', 'renewed': success_count, 'failed': fail_count}

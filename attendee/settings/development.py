@@ -12,6 +12,13 @@ SITE_DOMAIN = "localhost:8000"
 ALLOWED_HOSTS = ["tendee-stripe-hooks.ngrok.io", "localhost", "wayfarrow.info"]
 CSRF_TRUSTED_ORIGINS = ["https://wayfarrow.info"]
 
+# Calendar sync settings
+# Polling interval for calendar syncs (in minutes) - used as backup when push notifications are enabled
+CALENDAR_SYNC_INTERVAL_MINUTES = 5
+
+# Webhook URL for Google Calendar push notifications
+GOOGLE_CALENDAR_WEBHOOK_URL = "https://wayfarrow.info/dashboard/webhook/google-calendar/"
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
