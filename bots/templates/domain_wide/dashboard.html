@@ -181,6 +181,54 @@
             font-size: 12px;
             margin-left: 8px;
         }
+
+        /* Calendar Sync Health */
+        .row-error { background: #fff5f5; }
+        .error-text { color: #dc3545; font-size: 12px; max-width: 300px; }
+
+        /* Infrastructure Status */
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .status-green { background: #28a745; }
+        .status-yellow { background: #ffc107; }
+        .status-red { background: #dc3545; }
+        .sublabel { font-size: 11px; color: #888; margin-top: 2px; }
+
+        /* Live Logs */
+        .log-controls { display: flex; gap: 8px; align-items: center; }
+        .log-select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .log-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            padding: 12px;
+            border-radius: 4px;
+            height: 400px;
+            overflow-y: auto;
+        }
+        .log-line { padding: 2px 0; white-space: nowrap; }
+        .log-line:hover { background: #2d2d2d; }
+        .log-time { color: #888; margin-right: 8px; }
+        .log-msg { color: #d4d4d4; }
+        .log-error .log-msg { color: #f48771; }
+        .log-warning .log-msg { color: #dcdcaa; }
+        .log-footer {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 12px;
+            color: #888;
+        }
     </style>
 </head>
 <body>
@@ -352,6 +400,98 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- Calendar Sync Health -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Calendar Sync Health</h2>
+                <span class="count-badge" id="calendar-count">0 calendars</span>
+            </div>
+            <table>
+                <thead>
+                    <tr><th>Calendar</th><th>Owner</th><th>Status</th><th>Last Sync</th><th>Details</th></tr>
+                </thead>
+                <tbody id="calendar-sync-body">
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Infrastructure Status -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Infrastructure</h2>
+            </div>
+
+            <!-- Container Status Row -->
+            <div class="stats-row" id="containers-row" style="margin-bottom: 16px;">
+                <div class="stat-card">
+                    <div class="loading">Loading containers...</div>
+                </div>
+            </div>
+
+            <!-- Celery Queue -->
+            <div class="pipeline-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <div class="pipeline-col">
+                    <h3>Workers</h3>
+                    <div class="metric-row">
+                        <span class="metric-value" id="celery-workers">--</span>
+                    </div>
+                </div>
+                <div class="pipeline-col">
+                    <h3>Active Tasks</h3>
+                    <div class="metric-row">
+                        <span class="metric-value" id="celery-active">--</span>
+                    </div>
+                </div>
+                <div class="pipeline-col">
+                    <h3>Pending</h3>
+                    <div class="metric-row">
+                        <span class="metric-value" id="celery-pending">--</span>
+                    </div>
+                </div>
+                <div class="pipeline-col">
+                    <h3>Failed (24h)</h3>
+                    <div class="metric-row">
+                        <span class="metric-value metric-error" id="celery-failed">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Logs Stream -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Live Logs</h2>
+                <div class="log-controls">
+                    <select id="log-source" class="log-select">
+                        <option value="worker">worker</option>
+                        <option value="scheduler">scheduler</option>
+                        <option value="app">app</option>
+                    </select>
+                    <select id="log-level" class="log-select">
+                        <option value="INFO">INFO+</option>
+                        <option value="WARNING">WARNING+</option>
+                        <option value="ERROR">ERROR only</option>
+                    </select>
+                    <button class="refresh-btn" id="log-pause">Pause</button>
+                    <button class="refresh-btn" id="log-clear" style="background:#6c757d;">Clear</button>
+                </div>
+            </div>
+
+            <div class="log-container" id="log-container">
+                <div class="log-line log-info">
+                    <span class="log-time">--:--:--</span>
+                    <span class="badge badge-info">INFO</span>
+                    <span class="log-msg">Connecting to log stream...</span>
+                </div>
+            </div>
+
+            <div class="log-footer">
+                <span id="log-status">Connecting...</span>
+                <span id="log-count">0 lines</span>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -359,7 +499,7 @@
         document.getElementById('date-picker').valueAsDate = new Date();
 
         async function loadData() {
-            await Promise.all([loadSummary(), loadDateData(), loadFailures()]);
+            await Promise.all([loadSummary(), loadDateData(), loadFailures(), loadCalendarSync(), loadInfrastructure()]);
         }
 
         async function loadSummary() {
@@ -500,10 +640,215 @@
             return div.innerHTML;
         }
 
+        // Calendar Sync Health
+        async function loadCalendarSync() {
+            try {
+                const data = await fetch('/dashboard/api/calendar-sync/').then(r => r.json());
+                const calendars = data.calendars || [];
+
+                document.getElementById('calendar-count').textContent = `${calendars.length} calendars`;
+
+                const tbody = document.getElementById('calendar-sync-body');
+                if (calendars.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5">No calendars configured</td></tr>';
+                } else {
+                    tbody.innerHTML = calendars.map(cal => {
+                        const isError = cal.state === 'disconnected';
+                        const rowClass = isError ? 'row-error' : '';
+
+                        // Format last sync time
+                        let lastSyncText = 'Never';
+                        if (cal.sync_age_minutes !== null) {
+                            if (cal.sync_age_minutes < 60) {
+                                lastSyncText = `${cal.sync_age_minutes} min ago`;
+                            } else if (cal.sync_age_minutes < 1440) {
+                                lastSyncText = `${Math.floor(cal.sync_age_minutes / 60)}h ago`;
+                            } else {
+                                lastSyncText = `${Math.floor(cal.sync_age_minutes / 1440)} days ago`;
+                            }
+                        }
+
+                        const statusBadge = isError
+                            ? '<span class="badge badge-error">Disconnected</span>'
+                            : '<span class="badge badge-success">Connected</span>';
+
+                        const details = isError && cal.error
+                            ? `<span class="error-text">${escapeHtml(cal.error)}</span>`
+                            : '-';
+
+                        return `
+                            <tr class="${rowClass}">
+                                <td><code>${cal.id}</code></td>
+                                <td>${escapeHtml(cal.owner) || '-'}</td>
+                                <td>${statusBadge}</td>
+                                <td>${lastSyncText}</td>
+                                <td>${details}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load calendar sync:', error);
+            }
+        }
+
+        // Infrastructure Status
+        async function loadInfrastructure() {
+            try {
+                const data = await fetch('/dashboard/api/infrastructure/').then(r => r.json());
+
+                // Container status
+                const containersRow = document.getElementById('containers-row');
+                const containers = data.containers || [];
+
+                if (containers.length === 0) {
+                    containersRow.innerHTML = '<div class="stat-card"><div class="loading">No containers found</div></div>';
+                } else {
+                    containersRow.innerHTML = containers.map(c => {
+                        const isRunning = c.status === 'running';
+                        const dotClass = isRunning ? 'status-green' : 'status-red';
+                        const uptime = c.uptime || (isRunning ? 'Unknown' : 'Stopped');
+
+                        return `
+                            <div class="stat-card">
+                                <div class="value"><span class="status-dot ${dotClass}"></span></div>
+                                <div class="label">${escapeHtml(c.name)}</div>
+                                <div class="sublabel">${isRunning ? 'Up ' : ''}${uptime}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                // Celery status
+                const celery = data.celery || {};
+                document.getElementById('celery-workers').textContent = celery.workers ?? '--';
+                document.getElementById('celery-active').textContent = celery.active_tasks ?? '--';
+                document.getElementById('celery-pending').textContent = celery.pending_tasks ?? '--';
+                document.getElementById('celery-failed').textContent = celery.failed_recent ?? '--';
+
+            } catch (error) {
+                console.error('Failed to load infrastructure:', error);
+            }
+        }
+
+        // Live Logs Stream
+        let logEventSource = null;
+        let logPaused = false;
+        let logLineCount = 0;
+        let autoScroll = true;
+        const MAX_LOG_LINES = 500;
+
+        function initLogStream() {
+            const source = document.getElementById('log-source').value;
+            const level = document.getElementById('log-level').value;
+
+            // Close existing connection
+            if (logEventSource) {
+                logEventSource.close();
+            }
+
+            const logContainer = document.getElementById('log-container');
+            logContainer.innerHTML = '';
+            logLineCount = 0;
+            updateLogStatus('Connecting...');
+
+            logEventSource = new EventSource(`/dashboard/api/logs/stream?source=${source}&level=${level}`);
+
+            logEventSource.onopen = () => {
+                updateLogStatus('Connected - Auto-scrolling');
+            };
+
+            logEventSource.onmessage = (event) => {
+                if (logPaused) return;
+
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.error) {
+                        addLogLine('--:--:--', 'ERROR', data.error);
+                        return;
+                    }
+
+                    addLogLine(data.time || '--:--:--', data.level || 'INFO', data.message || '');
+                } catch (e) {
+                    // Raw text log line
+                    addLogLine('--:--:--', 'INFO', event.data);
+                }
+            };
+
+            logEventSource.onerror = () => {
+                updateLogStatus('Disconnected - Reconnecting...');
+            };
+        }
+
+        function addLogLine(time, level, message) {
+            const logContainer = document.getElementById('log-container');
+
+            // Remove oldest lines if at max
+            while (logContainer.children.length >= MAX_LOG_LINES) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+
+            const levelClass = level === 'ERROR' || level === 'CRITICAL' ? 'log-error'
+                             : level === 'WARNING' ? 'log-warning'
+                             : 'log-info';
+
+            const badgeClass = level === 'ERROR' || level === 'CRITICAL' ? 'badge-error'
+                             : level === 'WARNING' ? 'badge-warning'
+                             : 'badge-info';
+
+            const line = document.createElement('div');
+            line.className = `log-line ${levelClass}`;
+            line.innerHTML = `
+                <span class="log-time">${escapeHtml(time)}</span>
+                <span class="badge ${badgeClass}">${level}</span>
+                <span class="log-msg">${escapeHtml(message)}</span>
+            `;
+
+            logContainer.appendChild(line);
+            logLineCount++;
+            document.getElementById('log-count').textContent = `${logLineCount} lines`;
+
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        }
+
+        function updateLogStatus(status) {
+            document.getElementById('log-status').textContent = status;
+        }
+
+        // Log controls
+        document.getElementById('log-pause').addEventListener('click', function() {
+            logPaused = !logPaused;
+            this.textContent = logPaused ? 'Resume' : 'Pause';
+            updateLogStatus(logPaused ? 'Paused' : 'Connected - Auto-scrolling');
+        });
+
+        document.getElementById('log-clear').addEventListener('click', function() {
+            document.getElementById('log-container').innerHTML = '';
+            logLineCount = 0;
+            document.getElementById('log-count').textContent = '0 lines';
+        });
+
+        document.getElementById('log-source').addEventListener('change', initLogStream);
+        document.getElementById('log-level').addEventListener('change', initLogStream);
+
+        // Detect manual scroll to disable auto-scroll
+        document.getElementById('log-container').addEventListener('scroll', function() {
+            const isAtBottom = this.scrollHeight - this.scrollTop <= this.clientHeight + 50;
+            autoScroll = isAtBottom;
+            if (!logPaused) {
+                updateLogStatus(autoScroll ? 'Connected - Auto-scrolling' : 'Connected - Scroll paused');
+            }
+        });
+
         // Initial load
         loadData();
+        initLogStream();
 
-        // Auto-refresh every 30 seconds
+        // Auto-refresh every 30 seconds (except logs which stream continuously)
         setInterval(loadData, 30000);
     </script>
 </body>

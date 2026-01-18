@@ -11,6 +11,11 @@ urlpatterns = [
     path('api/pipeline/', views.PipelineStatusAPI.as_view(), name='api-pipeline'),
     path('api/events/', views.EventsBotListAPI.as_view(), name='api-events'),
 
+    # Debugging APIs
+    path('api/calendar-sync/', views.CalendarSyncHealthAPI.as_view(), name='api-calendar-sync'),
+    path('api/infrastructure/', views.InfrastructureStatusAPI.as_view(), name='api-infrastructure'),
+    path('api/logs/stream', views.LogStreamView.as_view(), name='api-logs-stream'),
+
     # Webhooks
     path('webhook/google-calendar/', views.GoogleCalendarWebhook.as_view(), name='google-calendar-webhook'),
 

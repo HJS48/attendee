@@ -33,6 +33,7 @@ services:
     build: ./
     volumes:
      - .:/attendee
+     - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - attendee_network
     ports:

@@ -826,3 +826,271 @@ class MicrosoftOAuthCallback(View):
             'provider': 'Microsoft',
             'email': email,
         })
+
+
+# =============================================================================
+# Debugging Dashboard APIs
+# =============================================================================
+
+class CalendarSyncHealthAPI(View):
+    """API for calendar sync health status."""
+
+    def get(self, request):
+        from bots.models import CalendarStates
+
+        calendars = Calendar.objects.all().order_by('-last_successful_sync_at')
+
+        calendars_data = []
+        for cal in calendars:
+            # Determine state
+            if cal.state == CalendarStates.CONNECTED:
+                state = 'connected'
+            else:
+                state = 'disconnected'
+
+            # Calculate sync age
+            sync_age_minutes = None
+            if cal.last_successful_sync_at:
+                delta = timezone.now() - cal.last_successful_sync_at
+                sync_age_minutes = int(delta.total_seconds() / 60)
+
+            # Extract error details
+            error = None
+            first_failure = None
+            days_disconnected = None
+
+            if cal.connection_failure_data:
+                error = cal.connection_failure_data.get('error', str(cal.connection_failure_data))
+                failure_time = cal.connection_failure_data.get('first_failure_at')
+                if failure_time:
+                    first_failure = failure_time
+                    try:
+                        from dateutil.parser import parse as parse_date
+                        failure_dt = parse_date(failure_time)
+                        days_disconnected = (timezone.now() - failure_dt).days
+                    except Exception:
+                        pass
+
+            # Get calendar owner from deduplication_key
+            owner = cal.deduplication_key
+            if owner:
+                owner = owner.replace('-google-sa', '').replace('-google-oauth', '').replace('-microsoft-oauth', '')
+
+            cal_data = {
+                'id': cal.object_id,
+                'owner': owner,
+                'state': state,
+                'last_sync': cal.last_successful_sync_at.isoformat() if cal.last_successful_sync_at else None,
+                'sync_age_minutes': sync_age_minutes,
+            }
+
+            if state == 'disconnected':
+                cal_data['error'] = error
+                cal_data['first_failure'] = first_failure
+                cal_data['days_disconnected'] = days_disconnected
+
+            calendars_data.append(cal_data)
+
+        return JsonResponse({'calendars': calendars_data})
+
+
+class InfrastructureStatusAPI(View):
+    """API for infrastructure status (containers + Celery)."""
+
+    def get(self, request):
+        # Get container status via Docker SDK
+        containers = []
+        try:
+            import docker
+            client = docker.from_env()
+
+            for container in client.containers.list(all=True):
+                name = container.name
+                # Filter to relevant containers
+                if any(x in name.lower() for x in ['attendee', 'worker', 'scheduler', 'redis', 'postgres']):
+                    status = container.status
+                    running = status == 'running'
+
+                    # Get uptime from container attrs
+                    uptime = None
+                    if running:
+                        try:
+                            started_at = container.attrs.get('State', {}).get('StartedAt', '')
+                            if started_at:
+                                from dateutil.parser import parse as parse_date
+                                start_time = parse_date(started_at)
+                                delta = timezone.now() - start_time
+                                days = delta.days
+                                hours = delta.seconds // 3600
+                                if days > 0:
+                                    uptime = f"{days} day{'s' if days != 1 else ''}"
+                                elif hours > 0:
+                                    uptime = f"{hours} hour{'s' if hours != 1 else ''}"
+                                else:
+                                    mins = delta.seconds // 60
+                                    uptime = f"{mins} min{'s' if mins != 1 else ''}"
+                        except Exception:
+                            uptime = "Unknown"
+
+                    # Simplify container name
+                    simple_name = name
+                    for prefix in ['attendee-attendee-', 'attendee-', 'meetings-']:
+                        if simple_name.startswith(prefix):
+                            simple_name = simple_name[len(prefix):]
+                    for suffix in ['-local-1', '-1']:
+                        if simple_name.endswith(suffix):
+                            simple_name = simple_name[:-len(suffix)]
+
+                    containers.append({
+                        'name': simple_name,
+                        'status': 'running' if running else 'stopped',
+                        'uptime': uptime,
+                    })
+
+            client.close()
+        except Exception as e:
+            logger.warning(f"Failed to get container status: {e}")
+            containers = [{'name': 'docker', 'status': 'unavailable', 'uptime': None}]
+
+        # Get Celery status
+        celery_status = {
+            'workers': 0,
+            'active_tasks': 0,
+            'pending_tasks': 0,
+            'failed_recent': 0,
+            'retrying': 0,
+        }
+
+        try:
+            from attendee.celery import app as celery_app
+
+            # Inspect workers
+            inspect = celery_app.control.inspect()
+
+            # Active workers
+            active_workers = inspect.active()
+            if active_workers:
+                celery_status['workers'] = len(active_workers)
+                celery_status['active_tasks'] = sum(len(tasks) for tasks in active_workers.values())
+
+            # Reserved (pending) tasks
+            reserved = inspect.reserved()
+            if reserved:
+                celery_status['pending_tasks'] = sum(len(tasks) for tasks in reserved.values())
+
+            # Get failed task count from last 24h using Celery events or Redis
+            # This is a simplified version - full implementation would use flower or celery events
+            try:
+                # Try to get queue length from Redis
+                import redis
+                r = redis.from_url('redis://localhost:6379/0')
+                celery_status['pending_tasks'] = r.llen('celery')
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.warning(f"Failed to get Celery status: {e}")
+
+        return JsonResponse({
+            'containers': containers,
+            'celery': celery_status,
+        })
+
+
+class LogStreamView(View):
+    """Server-Sent Events stream for live logs."""
+
+    def get(self, request):
+        from django.http import StreamingHttpResponse
+        import re
+        import json as json_module
+
+        source = request.GET.get('source', 'worker')
+        level = request.GET.get('level', 'INFO')
+
+        # Map source to container name pattern
+        container_patterns = {
+            'worker': ['worker', 'celery'],
+            'scheduler': ['scheduler', 'beat'],
+            'app': ['app', 'web', 'django'],
+        }
+
+        # Find the matching container using Docker SDK
+        container = None
+        try:
+            import docker
+            client = docker.from_env()
+
+            patterns = container_patterns.get(source, [source])
+            for c in client.containers.list():
+                if any(p in c.name.lower() for p in patterns):
+                    container = c
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to find container for {source}: {e}")
+
+        if not container:
+            def error_stream():
+                yield f"data: {json_module.dumps({'error': f'Container not found for source: {source}'})}\n\n"
+            response = StreamingHttpResponse(error_stream(), content_type='text/event-stream')
+            response['Cache-Control'] = 'no-cache'
+            response['X-Accel-Buffering'] = 'no'
+            return response
+
+        def level_matches(line, min_level):
+            """Check if log line meets minimum level."""
+            levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+            try:
+                min_idx = levels.index(min_level)
+            except ValueError:
+                min_idx = 1  # Default to INFO
+
+            for i, lvl in enumerate(levels):
+                if lvl in line.upper():
+                    return i >= min_idx
+            # If no level found, include the line (likely INFO)
+            return min_level in ['DEBUG', 'INFO']
+
+        def log_stream():
+            try:
+                # Use Docker SDK to stream logs
+                for line in container.logs(stream=True, follow=True, tail=100, timestamps=True):
+                    try:
+                        line = line.decode('utf-8').strip()
+                    except Exception:
+                        continue
+
+                    if not line:
+                        continue
+
+                    if not level_matches(line, level):
+                        continue
+
+                    # Parse log line and extract level
+                    log_level = 'INFO'
+                    for lvl in ['ERROR', 'WARNING', 'CRITICAL', 'DEBUG', 'INFO']:
+                        if lvl in line.upper():
+                            log_level = lvl
+                            break
+
+                    # Extract timestamp if present (Docker format: 2026-01-18T10:32:45.123Z)
+                    timestamp = ''
+                    ts_match = re.match(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', line)
+                    if ts_match:
+                        timestamp = ts_match.group(1).split('T')[1][:8]
+                        line = line[ts_match.end():].strip()
+
+                    data = json_module.dumps({
+                        'time': timestamp,
+                        'level': log_level,
+                        'message': line[:500],  # Truncate very long lines
+                    })
+                    yield f"data: {data}\n\n"
+
+            except Exception as e:
+                yield f"data: {json_module.dumps({'error': str(e)})}\n\n"
+
+        response = StreamingHttpResponse(log_stream(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
