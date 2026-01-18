@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import dateutil.parser
 import requests
 from celery import shared_task
+from google.auth import exceptions as google_auth_exceptions
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from django.db import transaction
@@ -124,6 +125,40 @@ class CalendarAPIAuthenticationError(CalendarAPIError):
     """Custom exception for Google Calendar API errors."""
 
     pass
+
+
+# Network error indicators - these should trigger retry, not disconnection
+NETWORK_ERROR_INDICATORS = [
+    "network is unreachable",
+    "connection refused",
+    "connection reset",
+    "connection aborted",
+    "temporary failure in name resolution",
+    "name or service not known",
+    "no route to host",
+    "timed out",
+    "timeout",
+    "errno 101",
+    "errno 110",
+    "errno 111",
+]
+
+
+def _is_network_error(exception: Exception) -> bool:
+    """Check if an exception is a network/transient error that should be retried."""
+    # Direct network error types
+    if isinstance(exception, (
+        OSError,
+        ConnectionError,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+        requests.exceptions.ChunkedEncodingError,
+    )):
+        return True
+
+    # Check error message for network-related issues
+    error_str = str(exception).lower()
+    return any(indicator in error_str for indicator in NETWORK_ERROR_INDICATORS)
 
 
 class CalendarSyncHandler:
@@ -280,23 +315,39 @@ class CalendarSyncHandler:
 
         except CalendarAPIAuthenticationError as e:
             # Update calendar state to indicate failure
+            was_already_disconnected = self.calendar.state == CalendarStates.DISCONNECTED
+
             with transaction.atomic():
-                remove_bots_from_calendar(calendar=self.calendar, project=self.calendar.project)
+                # Preserve first_failure_timestamp, update latest error
+                existing_data = self.calendar.connection_failure_data or {}
+                now = timezone.now()
+                first_failure_timestamp = existing_data.get("first_failure_timestamp", now.isoformat())
+
+                # Only delete bots if calendar has been disconnected for > 30 days
+                first_failure_dt = dateutil.parser.isoparse(first_failure_timestamp)
+                days_disconnected = (now - first_failure_dt).days
+
+                if days_disconnected >= 30:
+                    deleted_count = remove_bots_from_calendar(calendar=self.calendar, project=self.calendar.project)
+                    logger.info(f"Calendar {self.calendar.object_id} has been disconnected for {days_disconnected} days, deleted bots")
+
                 self.calendar.state = CalendarStates.DISCONNECTED
                 self.calendar.connection_failure_data = {
                     "error": str(e),
-                    "timestamp": timezone.now().isoformat(),
+                    "timestamp": now.isoformat(),
+                    "first_failure_timestamp": first_failure_timestamp,
                 }
                 self.calendar.save()
 
-            logger.exception(f"Calendar sync failed with CalendarAPIAuthenticationError for {self.calendar.object_id}: {e}")
+            logger.warning(f"Calendar sync failed with CalendarAPIAuthenticationError for {self.calendar.object_id}: {e}")
 
-            # Create webhook event
-            trigger_webhook(
-                webhook_trigger_type=WebhookTriggerTypes.CALENDAR_STATE_CHANGE,
-                calendar=self.calendar,
-                payload=calendar_webhook_payload(self.calendar),
-            )
+            # Only trigger webhook on state change (first disconnection)
+            if not was_already_disconnected:
+                trigger_webhook(
+                    webhook_trigger_type=WebhookTriggerTypes.CALENDAR_STATE_CHANGE,
+                    calendar=self.calendar,
+                    payload=calendar_webhook_payload(self.calendar),
+                )
 
         except Exception as e:
             logger.exception(f"Calendar sync failed with {type(e).__name__} for {self.calendar.object_id}: {e}")
@@ -333,13 +384,13 @@ class GoogleCalendarSyncHandler(CalendarSyncHandler):
 
     def _get_service_account_token(self, credentials: dict) -> str:
         """Get access token using service account impersonation."""
+        sa_key = credentials.get("service_account_key")
+        impersonate_email = credentials.get("impersonate_email")
+
+        if not sa_key or not impersonate_email:
+            raise CalendarAPIAuthenticationError("Missing service_account_key or impersonate_email")
+
         try:
-            sa_key = credentials.get("service_account_key")
-            impersonate_email = credentials.get("impersonate_email")
-
-            if not sa_key or not impersonate_email:
-                raise CalendarAPIAuthenticationError("Missing service_account_key or impersonate_email")
-
             sa_credentials = service_account.Credentials.from_service_account_info(
                 sa_key,
                 scopes=["https://www.googleapis.com/auth/calendar.readonly"],
@@ -347,7 +398,14 @@ class GoogleCalendarSyncHandler(CalendarSyncHandler):
             )
             sa_credentials.refresh(GoogleAuthRequest())
             return sa_credentials.token
+        except google_auth_exceptions.RefreshError as e:
+            # Actual auth failure (invalid credentials, revoked access, etc.)
+            raise CalendarAPIAuthenticationError(f"Service account auth failed: {e}")
         except Exception as e:
+            # Check if this is a network error that should be retried
+            if _is_network_error(e):
+                raise CalendarAPIError(f"Network error during service account auth: {e}")
+            # Unknown error - treat as auth error to be safe
             raise CalendarAPIAuthenticationError(f"Service account auth failed: {e}")
 
     def _get_oauth_token(self, credentials: dict) -> str:
@@ -377,6 +435,9 @@ class GoogleCalendarSyncHandler(CalendarSyncHandler):
             return token_data["access_token"]
 
         except requests.RequestException as e:
+            # Check for network errors first (no response object)
+            if _is_network_error(e) or not hasattr(e, 'response') or e.response is None:
+                raise CalendarAPIError(f"Network error during OAuth token refresh: {e}")
             self._raise_if_error_is_authentication_error(e)
             raise CalendarAPIError(f"Failed to refresh Google access token. Response body: {e.response.json()}")
 
@@ -585,6 +646,9 @@ class MicrosoftCalendarSyncHandler(CalendarSyncHandler):
             return access_token
 
         except requests.RequestException as e:
+            # Check for network errors first (no response object)
+            if _is_network_error(e) or not hasattr(e, 'response') or e.response is None:
+                raise CalendarAPIError(f"Network error during Microsoft OAuth token refresh: {e}")
             self._raise_if_error_is_authentication_error(e)
             raise CalendarAPIError(f"Failed to refresh Microsoft access token. Response body: {e.response.json()}")
 

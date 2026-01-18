@@ -95,9 +95,10 @@ class Command(BaseCommand):
         sync_interval = getattr(settings, 'CALENDAR_SYNC_INTERVAL_MINUTES', 30)
         cutoff_time = now - timezone.timedelta(minutes=sync_interval)
 
-        # Find connected calendars that haven't had a sync task enqueued in the last 30 minutes
+        # Find calendars that haven't had a sync task enqueued in the last 30 minutes
+        # Include DISCONNECTED calendars so they can auto-reconnect if the issue was transient
         calendars = Calendar.objects.filter(
-            state=CalendarStates.CONNECTED,
+            state__in=[CalendarStates.CONNECTED, CalendarStates.DISCONNECTED],
         ).filter(Q(sync_task_enqueued_at__isnull=True) | Q(sync_task_enqueued_at__lte=cutoff_time) | Q(sync_task_requested_at__isnull=False))
 
         for calendar in calendars:
