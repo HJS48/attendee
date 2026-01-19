@@ -199,11 +199,12 @@ def sync_meeting_to_supabase(bot_id: str):
     if event:
         meeting_data['organizer_email'] = getattr(event, 'organizer_email', None)
 
-        # Get attendees from event
+        # Get attendees from event and store as participants
+        # Note: Supabase meetings table has 'participants' column, not 'attendees'
         attendees = event.attendees or []
         if isinstance(attendees, list):
-            meeting_data['attendees'] = [
-                a.get('email') for a in attendees
+            meeting_data['participants'] = [
+                {'email': a.get('email')} for a in attendees
                 if isinstance(a, dict) and a.get('email')
             ]
 

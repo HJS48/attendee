@@ -32,6 +32,7 @@ LOGGING = {
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",  # Use stdout instead of stderr to avoid ERROR tagging
         },
     },
     "root": {
