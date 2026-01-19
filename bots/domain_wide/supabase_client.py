@@ -1,18 +1,19 @@
 """
-Supabase client for domain-wide integration.
+Supabase client for meeting data sync.
 
-Used to:
-- Fetch meeting transcripts for viewer
-- Sync meeting data for automations
+IMPORTANT: This client is UPSERT-ONLY. It will never delete data from Supabase.
+Supabase serves as a persistent mirror that survives container refreshes.
+
+Tables used:
+- meetings: Core meeting data with transcripts
+- meeting_insights: Summary and action items
 """
 import os
 import logging
-from functools import lru_cache
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Lazy import to avoid startup issues if supabase not installed
 _supabase_client = None
 
 
@@ -24,7 +25,7 @@ def get_supabase_client():
         return _supabase_client
 
     try:
-        from supabase import create_client, Client
+        from supabase import create_client
     except ImportError:
         logger.error("supabase package not installed. Run: pip install supabase")
         return None
@@ -87,38 +88,51 @@ def get_meeting_insights(meeting_id: str) -> list:
         return []
 
 
-def get_attendee_emails_for_meeting(meeting_url: str) -> list:
-    """Get attendee emails for a meeting URL from calendar events."""
+def upsert_meeting(meeting_data: dict) -> dict | None:
+    """
+    Insert or update a meeting record. NEVER deletes.
+
+    Uses attendee_bot_id as the conflict key for upsert.
+    Safe to call multiple times - will update existing record.
+    """
     client = get_supabase_client()
     if not client:
-        return []
+        logger.error("Supabase client not available - check SUPABASE_URL and SUPABASE_SERVICE_KEY")
+        return None
 
     try:
-        # Fetch calendar events with this meeting URL
-        result = client.table('calendar_events').select('attendees').eq('meeting_url', meeting_url).execute()
-
-        # Flatten attendees from all events
-        all_attendees = []
-        for event in result.data or []:
-            attendees = event.get('attendees') or []
-            if isinstance(attendees, list):
-                all_attendees.extend(attendees)
-
-        return all_attendees
+        result = client.table('meetings').upsert(
+            meeting_data,
+            on_conflict='attendee_bot_id'
+        ).execute()
+        return result.data[0] if result.data else None
     except Exception as e:
-        logger.exception(f"Failed to fetch attendees for {meeting_url}: {e}")
-        return []
+        logger.exception(f"Failed to upsert meeting: {e}")
+        return None
 
 
-def upsert_meeting(meeting_data: dict) -> dict | None:
-    """Insert or update a meeting record."""
+def upsert_meeting_insights(meeting_id: str, summary: str = None, action_items: list = None) -> dict | None:
+    """
+    Insert or update meeting insights. NEVER deletes.
+
+    Uses meeting_id as the conflict key for upsert.
+    """
     client = get_supabase_client()
     if not client:
         return None
 
+    insights_data = {'meeting_id': meeting_id}
+    if summary:
+        insights_data['summary'] = summary
+    if action_items:
+        insights_data['action_items'] = action_items
+
     try:
-        result = client.table('meetings').upsert(meeting_data).execute()
+        result = client.table('meeting_insights').upsert(
+            insights_data,
+            on_conflict='meeting_id'
+        ).execute()
         return result.data[0] if result.data else None
     except Exception as e:
-        logger.exception(f"Failed to upsert meeting: {e}")
+        logger.exception(f"Failed to upsert meeting insights: {e}")
         return None

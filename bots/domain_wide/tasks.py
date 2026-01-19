@@ -48,14 +48,71 @@ def sync_all_pilot_calendars():
 
 
 @shared_task
+def sync_pending_meetings_to_supabase():
+    """
+    Cron task: Find ended bots with completed recordings that need syncing.
+
+    Run every 5 minutes via celery beat or cron.
+    Idempotent - safe to run multiple times.
+    """
+    from bots.models import Bot, BotStates, Recording, RecordingStates
+    from django.db.models import Q, Exists, OuterRef
+    from django.utils import timezone
+    from datetime import timedelta
+
+    # Find bots that:
+    # 1. Are in ENDED state
+    # 2. Have a COMPLETE recording
+    # 3. Ended in the last 7 days (don't process ancient data)
+    # 4. Haven't been synced recently (no supabase_synced_at or it's older than recording completion)
+    seven_days_ago = timezone.now() - timedelta(days=7)
+
+    has_complete_recording = Exists(
+        Recording.objects.filter(
+            bot=OuterRef('pk'),
+            state=RecordingStates.COMPLETE
+        )
+    )
+
+    bots_to_sync = Bot.objects.filter(
+        state=BotStates.ENDED,
+        updated_at__gte=seven_days_ago,
+    ).annotate(
+        has_recording=has_complete_recording
+    ).filter(
+        has_recording=True
+    )
+
+    # Further filter: only sync if not synced or recording completed after last sync
+    # We'll track this via a simple approach: check if meeting exists in Supabase
+    # For now, just sync all - upsert is idempotent
+
+    synced = 0
+    failed = 0
+    for bot in bots_to_sync[:50]:  # Limit batch size
+        try:
+            result = sync_meeting_to_supabase(str(bot.object_id))
+            if result.get('status') == 'success':
+                synced += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.exception(f"Failed to sync bot {bot.object_id}: {e}")
+            failed += 1
+
+    logger.info(f"Supabase sync complete: {synced} synced, {failed} failed")
+    return {'synced': synced, 'failed': failed}
+
+
+@shared_task
 def sync_meeting_to_supabase(bot_id: str):
     """
     Sync meeting data to Supabase after bot has ended.
 
-    Collects meeting metadata from Bot and CalendarEvent,
+    Collects meeting metadata, transcript, and participants from Bot/Recording/Utterances,
     then upserts to Supabase meetings table for downstream automations.
     """
-    from bots.models import Bot, Recording, RecordingStates
+    from bots.models import Bot, Recording, RecordingStates, Participant
     from .supabase_client import upsert_meeting
 
     try:
@@ -77,6 +134,7 @@ def sync_meeting_to_supabase(bot_id: str):
         'attendee_bot_id': str(bot.object_id),
         'meeting_url': bot.meeting_url,
         'title': event.name if event else None,
+        'status': bot.get_state_display() if hasattr(bot, 'get_state_display') else str(bot.state),
     }
 
     # Use recording timestamps if available (more accurate than bot timestamps)
@@ -96,6 +154,47 @@ def sync_meeting_to_supabase(bot_id: str):
             except Exception:
                 pass  # File may not have a URL
 
+        # Build transcript from utterances
+        utterances = recording.utterances.select_related('participant').order_by('timestamp_ms')
+        transcript_segments = []
+        for u in utterances:
+            if u.transcription:
+                # Handle different transcription formats
+                text = ''
+                if isinstance(u.transcription, dict):
+                    text = u.transcription.get('text', '') or u.transcription.get('transcript', '')
+                elif isinstance(u.transcription, str):
+                    text = u.transcription
+
+                if text:
+                    transcript_segments.append({
+                        'speaker': u.participant.name if u.participant else 'Unknown',
+                        'timestamp_ms': u.timestamp_ms,
+                        'duration_ms': u.duration_ms,
+                        'text': text,
+                    })
+
+        if transcript_segments:
+            meeting_data['transcript'] = transcript_segments
+            # Also create a plain text version
+            meeting_data['transcript_text'] = '\n'.join([
+                f"[{seg['speaker']}]: {seg['text']}"
+                for seg in transcript_segments
+            ])
+
+    # Get participants from the bot's recordings
+    participants = Participant.objects.filter(
+        utterances__recording__bot=bot
+    ).distinct()
+    if participants.exists():
+        meeting_data['participants'] = [
+            {
+                'name': p.name,
+                'participant_id': str(p.id),
+            }
+            for p in participants
+        ]
+
     # Add event details if available
     if event:
         meeting_data['organizer_email'] = getattr(event, 'organizer_email', None)
@@ -111,7 +210,7 @@ def sync_meeting_to_supabase(bot_id: str):
     # Upsert to Supabase
     result = upsert_meeting(meeting_data)
     if result:
-        logger.info(f"Synced meeting to Supabase for bot {bot_id}")
+        logger.info(f"Synced meeting to Supabase for bot {bot_id}: {len(transcript_segments if 'transcript_segments' in dir() else [])} utterances")
         return {'status': 'success', 'meeting_id': result.get('id')}
     else:
         logger.warning(f"Failed to sync meeting to Supabase for bot {bot_id}")
