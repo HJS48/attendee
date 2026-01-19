@@ -1747,44 +1747,29 @@ class KubernetesNodesAPI(View):
 
 
 class LogStreamView(View):
-    """Server-Sent Events stream for live logs."""
+    """Server-Sent Events stream for live logs (Docker or Kubernetes)."""
+
+    def _detect_mode(self):
+        """Detect if running in Kubernetes or Docker mode."""
+        import os
+        force_mode = os.getenv('INFRASTRUCTURE_MODE')
+        if force_mode in ('kubernetes', 'docker'):
+            return force_mode
+        if os.path.exists('/var/run/secrets/kubernetes.io/serviceaccount/token'):
+            return 'kubernetes'
+        if os.getenv('KUBERNETES_SERVICE_HOST'):
+            return 'kubernetes'
+        return 'docker'
 
     def get(self, request):
         from django.http import StreamingHttpResponse
+        from django.conf import settings
         import re
         import json as json_module
 
-        source = request.GET.get('source', 'worker')
+        source = request.GET.get('source', 'scheduler')
         level = request.GET.get('level', 'INFO')
-
-        # Map source to container name pattern
-        container_patterns = {
-            'worker': ['worker', 'celery'],
-            'scheduler': ['scheduler', 'beat'],
-            'app': ['app', 'web', 'django'],
-        }
-
-        # Find the matching container using Docker SDK
-        container = None
-        try:
-            import docker
-            client = docker.from_env()
-
-            patterns = container_patterns.get(source, [source])
-            for c in client.containers.list():
-                if any(p in c.name.lower() for p in patterns):
-                    container = c
-                    break
-        except Exception as e:
-            logger.warning(f"Failed to find container for {source}: {e}")
-
-        if not container:
-            def error_stream():
-                yield f"data: {json_module.dumps({'error': f'Container not found for source: {source}'})}\n\n"
-            response = StreamingHttpResponse(error_stream(), content_type='text/event-stream')
-            response['Cache-Control'] = 'no-cache'
-            response['X-Accel-Buffering'] = 'no'
-            return response
+        mode = self._detect_mode()
 
         def level_matches(line, min_level):
             """Check if log line meets minimum level."""
@@ -1797,49 +1782,149 @@ class LogStreamView(View):
             for i, lvl in enumerate(levels):
                 if lvl in line.upper():
                     return i >= min_idx
-            # If no level found, include the line (likely INFO)
             return min_level in ['DEBUG', 'INFO']
 
-        def log_stream():
-            try:
-                # Use Docker SDK to stream logs
-                for line in container.logs(stream=True, follow=True, tail=100, timestamps=True):
-                    try:
-                        line = line.decode('utf-8').strip()
-                    except Exception:
-                        continue
+        def parse_log_line(line):
+            """Parse a log line and extract timestamp, level, message."""
+            log_level = 'INFO'
+            for lvl in ['ERROR', 'WARNING', 'CRITICAL', 'DEBUG', 'INFO']:
+                if lvl in line.upper():
+                    log_level = lvl
+                    break
 
-                    if not line:
-                        continue
+            timestamp = ''
+            ts_match = re.match(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', line)
+            if ts_match:
+                timestamp = ts_match.group(1).split('T')[1][:8]
+                line = line[ts_match.end():].strip()
 
-                    if not level_matches(line, level):
-                        continue
+            return timestamp, log_level, line[:500]
 
-                    # Parse log line and extract level
-                    log_level = 'INFO'
-                    for lvl in ['ERROR', 'WARNING', 'CRITICAL', 'DEBUG', 'INFO']:
-                        if lvl in line.upper():
-                            log_level = lvl
+        if mode == 'kubernetes':
+            # Kubernetes mode - stream from pod logs
+            # Map source to K8s deployment/pod patterns
+            k8s_patterns = {
+                'scheduler': 'attendee-scheduler',
+                'app': 'attendee-api',
+                'worker': 'attendee-worker',
+            }
+
+            pod_pattern = k8s_patterns.get(source, source)
+            namespace = getattr(settings, 'BOT_POD_NAMESPACE', 'attendee')
+
+            def k8s_log_stream():
+                try:
+                    v1 = _init_kubernetes_client()
+
+                    # Find matching pod
+                    pods = v1.list_namespaced_pod(namespace=namespace)
+                    target_pod = None
+                    for pod in pods.items:
+                        if pod_pattern in pod.metadata.name and pod.status.phase == 'Running':
+                            target_pod = pod
                             break
 
-                    # Extract timestamp if present (Docker format: 2026-01-18T10:32:45.123Z)
-                    timestamp = ''
-                    ts_match = re.match(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', line)
-                    if ts_match:
-                        timestamp = ts_match.group(1).split('T')[1][:8]
-                        line = line[ts_match.end():].strip()
+                    if not target_pod:
+                        yield f"data: {json_module.dumps({'error': f'No running pod found matching: {pod_pattern}'})}\n\n"
+                        return
 
-                    data = json_module.dumps({
-                        'time': timestamp,
-                        'level': log_level,
-                        'message': line[:500],  # Truncate very long lines
-                    })
-                    yield f"data: {data}\n\n"
+                    # Stream logs from the pod
+                    pod_name = target_pod.metadata.name
+                    container_name = target_pod.spec.containers[0].name if target_pod.spec.containers else None
 
+                    # Use watch to stream logs
+                    from kubernetes import watch
+                    w = watch.Watch()
+
+                    for line in w.stream(
+                        v1.read_namespaced_pod_log,
+                        name=pod_name,
+                        namespace=namespace,
+                        container=container_name,
+                        follow=True,
+                        tail_lines=100,
+                        timestamps=True,
+                        _request_timeout=300
+                    ):
+                        if not line:
+                            continue
+
+                        if not level_matches(line, level):
+                            continue
+
+                        timestamp, log_level, message = parse_log_line(line)
+
+                        data = json_module.dumps({
+                            'time': timestamp,
+                            'level': log_level,
+                            'message': message,
+                            'pod': pod_name,
+                        })
+                        yield f"data: {data}\n\n"
+
+                except Exception as e:
+                    logger.warning(f"K8s log stream error: {e}")
+                    yield f"data: {json_module.dumps({'error': str(e)})}\n\n"
+
+            response = StreamingHttpResponse(k8s_log_stream(), content_type='text/event-stream')
+
+        else:
+            # Docker mode - stream from container logs
+            container_patterns = {
+                'worker': ['worker', 'celery'],
+                'scheduler': ['scheduler', 'beat'],
+                'app': ['app', 'web', 'django'],
+            }
+
+            container = None
+            try:
+                import docker
+                client = docker.from_env()
+
+                patterns = container_patterns.get(source, [source])
+                for c in client.containers.list():
+                    if any(p in c.name.lower() for p in patterns):
+                        container = c
+                        break
             except Exception as e:
-                yield f"data: {json_module.dumps({'error': str(e)})}\n\n"
+                logger.warning(f"Failed to find container for {source}: {e}")
 
-        response = StreamingHttpResponse(log_stream(), content_type='text/event-stream')
+            if not container:
+                def error_stream():
+                    yield f"data: {json_module.dumps({'error': f'Container not found for source: {source}'})}\n\n"
+                response = StreamingHttpResponse(error_stream(), content_type='text/event-stream')
+                response['Cache-Control'] = 'no-cache'
+                response['X-Accel-Buffering'] = 'no'
+                return response
+
+            def docker_log_stream():
+                try:
+                    for line in container.logs(stream=True, follow=True, tail=100, timestamps=True):
+                        try:
+                            line = line.decode('utf-8').strip()
+                        except Exception:
+                            continue
+
+                        if not line:
+                            continue
+
+                        if not level_matches(line, level):
+                            continue
+
+                        timestamp, log_level, message = parse_log_line(line)
+
+                        data = json_module.dumps({
+                            'time': timestamp,
+                            'level': log_level,
+                            'message': message,
+                        })
+                        yield f"data: {data}\n\n"
+
+                except Exception as e:
+                    yield f"data: {json_module.dumps({'error': str(e)})}\n\n"
+
+            response = StreamingHttpResponse(docker_log_stream(), content_type='text/event-stream')
+
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'
         return response

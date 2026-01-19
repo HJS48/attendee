@@ -1002,6 +1002,9 @@
                 modeBadge.textContent = mode === 'kubernetes' ? 'Kubernetes' : 'Docker';
                 modeBadge.className = `badge ${mode === 'kubernetes' ? 'badge-info' : 'badge-secondary'}`;
 
+                // Update log source options based on mode
+                updateLogSourceOptions(mode);
+
                 // Toggle sections based on mode
                 const dockerSection = document.getElementById('docker-section');
                 const k8sSection = document.getElementById('k8s-section');
@@ -1323,6 +1326,28 @@
         let logLineCount = 0;
         let autoScroll = true;
         const MAX_LOG_LINES = 500;
+
+        function updateLogSourceOptions(mode) {
+            const logSource = document.getElementById('log-source');
+            const currentValue = logSource.value;
+
+            if (mode === 'kubernetes') {
+                logSource.innerHTML = `
+                    <option value="scheduler">scheduler (k8s)</option>
+                    <option value="app">api (k8s)</option>
+                `;
+                // Set to scheduler if worker was selected (worker doesn't exist in k8s)
+                if (currentValue === 'worker') {
+                    logSource.value = 'scheduler';
+                }
+            } else {
+                logSource.innerHTML = `
+                    <option value="worker">worker</option>
+                    <option value="scheduler">scheduler</option>
+                    <option value="app">app</option>
+                `;
+            }
+        }
 
         function initLogStream() {
             const source = document.getElementById('log-source').value;
