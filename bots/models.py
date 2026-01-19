@@ -924,7 +924,7 @@ class Bot(models.Model):
         recording_settings = self.settings.get("recording_settings", {})
         if recording_settings is None:
             recording_settings = {}
-        resolution_value = recording_settings.get("resolution", RecordingResolutions.HD_1080P)
+        resolution_value = recording_settings.get("resolution", RecordingResolutions.HD_720P)
         return RecordingResolutions.get_dimensions(resolution_value)
 
     def recording_view(self):

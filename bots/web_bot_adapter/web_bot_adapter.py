@@ -534,6 +534,11 @@ class WebBotAdapter(BotAdapter):
         options.add_argument("--disable-application-cache")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--renderer-process-limit=1")
+        options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+        options.add_argument("--js-flags=--max-old-space-size=512")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--memory-pressure-off")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
         if os.getenv("ENABLE_CHROME_SANDBOX", "false").lower() != "true":
