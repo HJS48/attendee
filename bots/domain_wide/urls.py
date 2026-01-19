@@ -16,6 +16,12 @@ urlpatterns = [
     path('api/infrastructure/', views.InfrastructureStatusAPI.as_view(), name='api-infrastructure'),
     path('api/logs/stream', views.LogStreamView.as_view(), name='api-logs-stream'),
 
+    # Kubernetes APIs
+    path('api/k8s/pods/', views.KubernetesPodsAPI.as_view(), name='api-k8s-pods'),
+    path('api/k8s/alerts/', views.KubernetesAlertsAPI.as_view(), name='api-k8s-alerts'),
+    path('api/k8s/bot-lookup/', views.KubernetesBotLookupAPI.as_view(), name='api-k8s-bot-lookup'),
+    path('api/k8s/nodes/', views.KubernetesNodesAPI.as_view(), name='api-k8s-nodes'),
+
     # Webhooks
     path('webhook/google-calendar/', views.GoogleCalendarWebhook.as_view(), name='google-calendar-webhook'),
 

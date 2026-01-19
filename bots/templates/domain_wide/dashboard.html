@@ -229,6 +229,152 @@
             font-size: 12px;
             color: #888;
         }
+
+        /* Kubernetes Monitoring */
+        .k8s-section { display: none; }
+        .k8s-section.visible { display: block; }
+        .docker-section { display: block; }
+        .docker-section.hidden { display: none; }
+
+        .alert-banner {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .alert-banner.critical {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #dc2626;
+        }
+        .alert-banner.warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #d97706;
+        }
+        .alert-banner.healthy {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #059669;
+        }
+        .alert-icon { font-size: 20px; }
+        .alert-count { font-weight: 600; }
+        .alert-detail { font-size: 13px; opacity: 0.9; }
+
+        .k8s-stats-row {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .k8s-stat {
+            background: white;
+            border-radius: 8px;
+            padding: 12px 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .k8s-stat .value { font-size: 24px; font-weight: bold; color: #333; }
+        .k8s-stat .label { font-size: 11px; color: #666; margin-top: 4px; }
+        .k8s-stat.healthy .value { color: #10b981; }
+        .k8s-stat.warning .value { color: #f59e0b; }
+        .k8s-stat.error .value { color: #ef4444; }
+
+        .resource-bar-container {
+            margin-bottom: 12px;
+        }
+        .resource-bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .resource-bar {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .resource-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .resource-bar-fill.low { background: #10b981; }
+        .resource-bar-fill.medium { background: #f59e0b; }
+        .resource-bar-fill.high { background: #ef4444; }
+
+        .issues-table { margin-top: 12px; }
+        .issues-table td, .issues-table th { padding: 8px 12px; font-size: 13px; }
+        .issue-reason {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .issue-crashloop { background: #fee2e2; color: #dc2626; }
+        .issue-imagepull { background: #fef3c7; color: #d97706; }
+        .issue-oom { background: #e0e7ff; color: #4f46e5; }
+        .issue-pending { background: #dbeafe; color: #2563eb; }
+
+        .lookup-form {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .lookup-form input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            width: 250px;
+        }
+        .lookup-form button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .lookup-form button:hover { background: #0056b3; }
+
+        .lookup-result {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .lookup-result h4 { margin-bottom: 12px; font-size: 14px; color: #333; }
+        .lookup-result .detail-row {
+            display: flex;
+            padding: 4px 0;
+            font-size: 13px;
+        }
+        .lookup-result .detail-label {
+            width: 140px;
+            color: #666;
+            flex-shrink: 0;
+        }
+        .lookup-result .detail-value {
+            color: #333;
+            word-break: break-all;
+        }
+        .lookup-result .events-list {
+            margin-top: 8px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .lookup-result .event-item {
+            padding: 4px 0;
+            font-size: 12px;
+            border-bottom: 1px solid #eee;
+        }
     </style>
 </head>
 <body>
@@ -431,16 +577,96 @@
         <div class="card">
             <div class="card-header">
                 <h2>Infrastructure</h2>
+                <span id="infra-mode-badge" class="badge badge-info">--</span>
             </div>
 
-            <!-- Container Status Row -->
-            <div class="stats-row" id="containers-row" style="margin-bottom: 16px;">
-                <div class="stat-card">
-                    <div class="loading">Loading containers...</div>
+            <!-- Docker Container Status Row (hidden in K8s mode) -->
+            <div class="docker-section" id="docker-section">
+                <div class="stats-row" id="containers-row" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <div class="loading">Loading containers...</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Celery Queue -->
+            <!-- Kubernetes Section (hidden in Docker mode) -->
+            <div class="k8s-section" id="k8s-section">
+                <!-- K8s Alerts Banner -->
+                <div id="k8s-alerts-banner" class="alert-banner healthy" style="display: none;">
+                    <span class="alert-icon">⚠️</span>
+                    <span class="alert-count" id="k8s-alert-count">0 alerts</span>
+                    <span class="alert-detail" id="k8s-alert-detail"></span>
+                </div>
+
+                <!-- K8s Stats Row -->
+                <div class="k8s-stats-row">
+                    <div class="k8s-stat" id="k8s-api-stat">
+                        <div class="value" id="k8s-api-status">--</div>
+                        <div class="label">API Health</div>
+                    </div>
+                    <div class="k8s-stat">
+                        <div class="value" id="k8s-pods-running">--</div>
+                        <div class="label">Pods Running</div>
+                    </div>
+                    <div class="k8s-stat">
+                        <div class="value" id="k8s-pods-pending">--</div>
+                        <div class="label">Pods Pending</div>
+                    </div>
+                    <div class="k8s-stat">
+                        <div class="value" id="k8s-pods-failed">--</div>
+                        <div class="label">Pods Failed</div>
+                    </div>
+                    <div class="k8s-stat">
+                        <div class="value" id="k8s-nodes-ready">--</div>
+                        <div class="label">Nodes Ready</div>
+                    </div>
+                    <div class="k8s-stat">
+                        <div class="value" id="k8s-api-latency">--</div>
+                        <div class="label">API Latency</div>
+                    </div>
+                </div>
+
+                <!-- Resource Bars -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div class="resource-bar-container">
+                        <div class="resource-bar-label">
+                            <span>CPU Usage</span>
+                            <span id="k8s-cpu-pct">--%</span>
+                        </div>
+                        <div class="resource-bar">
+                            <div class="resource-bar-fill low" id="k8s-cpu-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <div class="resource-bar-container">
+                        <div class="resource-bar-label">
+                            <span>Memory Usage</span>
+                            <span id="k8s-mem-pct">--%</span>
+                        </div>
+                        <div class="resource-bar">
+                            <div class="resource-bar-fill low" id="k8s-mem-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pod Issues Table -->
+                <div id="k8s-issues-container" style="display: none;">
+                    <h3 style="font-size: 14px; color: #666; margin-bottom: 8px;">Pod Issues</h3>
+                    <table class="issues-table">
+                        <thead>
+                            <tr>
+                                <th>Pod</th>
+                                <th>Namespace</th>
+                                <th>Issue</th>
+                                <th>Node</th>
+                                <th>Age</th>
+                            </tr>
+                        </thead>
+                        <tbody id="k8s-issues-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Celery Queue (shown in both modes) -->
             <div class="pipeline-grid" style="grid-template-columns: repeat(4, 1fr);">
                 <div class="pipeline-col">
                     <h3>Workers</h3>
@@ -467,6 +693,18 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Kubernetes Bot/Pod Lookup (only shown in K8s mode) -->
+        <div class="card k8s-section" id="k8s-lookup-section">
+            <div class="card-header">
+                <h2>Bot/Pod Lookup</h2>
+            </div>
+            <div class="lookup-form">
+                <input type="text" id="k8s-lookup-input" placeholder="Enter bot_id or pod_name">
+                <button onclick="doK8sLookup()">Search</button>
+            </div>
+            <div id="k8s-lookup-result" style="display: none;"></div>
         </div>
 
         <!-- Live Logs Stream -->
@@ -751,33 +989,64 @@
         }
 
         // Infrastructure Status
+        let currentMode = 'docker';
+
         async function loadInfrastructure() {
             try {
                 const data = await fetch('/dashboard/api/infrastructure/').then(r => r.json());
+                const mode = data.mode || 'docker';
+                currentMode = mode;
 
-                // Container status
-                const containersRow = document.getElementById('containers-row');
-                const containers = data.containers || [];
+                // Update mode badge
+                const modeBadge = document.getElementById('infra-mode-badge');
+                modeBadge.textContent = mode === 'kubernetes' ? 'Kubernetes' : 'Docker';
+                modeBadge.className = `badge ${mode === 'kubernetes' ? 'badge-info' : 'badge-secondary'}`;
 
-                if (containers.length === 0) {
-                    containersRow.innerHTML = '<div class="stat-card"><div class="loading">No containers found</div></div>';
+                // Toggle sections based on mode
+                const dockerSection = document.getElementById('docker-section');
+                const k8sSection = document.getElementById('k8s-section');
+                const k8sLookupSection = document.getElementById('k8s-lookup-section');
+
+                if (mode === 'kubernetes') {
+                    dockerSection.classList.add('hidden');
+                    k8sSection.classList.add('visible');
+                    k8sLookupSection.classList.add('visible');
+
+                    // Update K8s stats
+                    updateK8sStats(data.kubernetes);
+
+                    // Load K8s alerts and pods
+                    loadK8sAlerts();
+                    loadK8sPods();
                 } else {
-                    containersRow.innerHTML = containers.map(c => {
-                        const isRunning = c.status === 'running';
-                        const dotClass = isRunning ? 'status-green' : 'status-red';
-                        const uptime = c.uptime || (isRunning ? 'Unknown' : 'Stopped');
+                    dockerSection.classList.remove('hidden');
+                    k8sSection.classList.remove('visible');
+                    k8sLookupSection.classList.remove('visible');
 
-                        return `
-                            <div class="stat-card">
-                                <div class="value"><span class="status-dot ${dotClass}"></span></div>
-                                <div class="label">${escapeHtml(c.name)}</div>
-                                <div class="sublabel">${isRunning ? 'Up ' : ''}${uptime}</div>
-                            </div>
-                        `;
-                    }).join('');
+                    // Container status
+                    const containersRow = document.getElementById('containers-row');
+                    const containers = data.containers || [];
+
+                    if (containers.length === 0) {
+                        containersRow.innerHTML = '<div class="stat-card"><div class="loading">No containers found</div></div>';
+                    } else {
+                        containersRow.innerHTML = containers.map(c => {
+                            const isRunning = c.status === 'running';
+                            const dotClass = isRunning ? 'status-green' : 'status-red';
+                            const uptime = c.uptime || (isRunning ? 'Unknown' : 'Stopped');
+
+                            return `
+                                <div class="stat-card">
+                                    <div class="value"><span class="status-dot ${dotClass}"></span></div>
+                                    <div class="label">${escapeHtml(c.name)}</div>
+                                    <div class="sublabel">${isRunning ? 'Up ' : ''}${uptime}</div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
                 }
 
-                // Celery status
+                // Celery status (shown in both modes)
                 const celery = data.celery || {};
                 document.getElementById('celery-workers').textContent = celery.workers ?? '--';
                 document.getElementById('celery-active').textContent = celery.active_tasks ?? '--';
@@ -788,6 +1057,265 @@
                 console.error('Failed to load infrastructure:', error);
             }
         }
+
+        function updateK8sStats(k8s) {
+            if (!k8s) return;
+
+            // API health
+            const apiStat = document.getElementById('k8s-api-stat');
+            const apiStatus = document.getElementById('k8s-api-status');
+            if (k8s.api_healthy) {
+                apiStatus.textContent = '✓';
+                apiStat.className = 'k8s-stat healthy';
+            } else {
+                apiStatus.textContent = '✗';
+                apiStat.className = 'k8s-stat error';
+            }
+
+            // API latency
+            document.getElementById('k8s-api-latency').textContent =
+                k8s.api_latency_ms ? `${k8s.api_latency_ms}ms` : '--';
+
+            // Pod counts from namespaces
+            let totalRunning = 0, totalPending = 0, totalFailed = 0;
+            for (const ns of (k8s.namespaces || [])) {
+                if (ns.pods) {
+                    totalRunning += ns.pods.running || 0;
+                    totalPending += ns.pods.pending || 0;
+                    totalFailed += ns.pods.failed || 0;
+                }
+            }
+
+            document.getElementById('k8s-pods-running').textContent = totalRunning;
+            document.getElementById('k8s-pods-pending').textContent = totalPending;
+            document.getElementById('k8s-pods-failed').textContent = totalFailed;
+
+            // Color code pending/failed
+            const pendingStat = document.getElementById('k8s-pods-pending').parentElement;
+            pendingStat.className = `k8s-stat ${totalPending > 0 ? 'warning' : ''}`;
+
+            const failedStat = document.getElementById('k8s-pods-failed').parentElement;
+            failedStat.className = `k8s-stat ${totalFailed > 0 ? 'error' : ''}`;
+
+            // Nodes
+            const nodes = k8s.nodes || {};
+            document.getElementById('k8s-nodes-ready').textContent = `${nodes.ready || 0}/${nodes.total || 0}`;
+
+            const nodesStat = document.getElementById('k8s-nodes-ready').parentElement;
+            nodesStat.className = `k8s-stat ${nodes.not_ready > 0 ? 'error' : 'healthy'}`;
+
+            // Resource bars
+            const resources = k8s.resource_usage;
+            if (resources) {
+                // CPU
+                const cpuPct = resources.cpu_allocatable_millicores > 0
+                    ? (resources.cpu_requested_millicores / resources.cpu_allocatable_millicores) * 100
+                    : 0;
+                document.getElementById('k8s-cpu-pct').textContent = `${cpuPct.toFixed(1)}%`;
+                const cpuBar = document.getElementById('k8s-cpu-bar');
+                cpuBar.style.width = `${Math.min(cpuPct, 100)}%`;
+                cpuBar.className = `resource-bar-fill ${cpuPct > 85 ? 'high' : cpuPct > 60 ? 'medium' : 'low'}`;
+
+                // Memory
+                const memPct = resources.memory_allocatable_bytes > 0
+                    ? (resources.memory_requested_bytes / resources.memory_allocatable_bytes) * 100
+                    : 0;
+                document.getElementById('k8s-mem-pct').textContent = `${memPct.toFixed(1)}%`;
+                const memBar = document.getElementById('k8s-mem-bar');
+                memBar.style.width = `${Math.min(memPct, 100)}%`;
+                memBar.className = `resource-bar-fill ${memPct > 85 ? 'high' : memPct > 60 ? 'medium' : 'low'}`;
+            }
+        }
+
+        async function loadK8sAlerts() {
+            try {
+                const data = await fetch('/dashboard/api/k8s/alerts/').then(r => r.json());
+                const alerts = data.alerts || [];
+                const summary = data.summary || { critical: 0, warning: 0 };
+
+                const banner = document.getElementById('k8s-alerts-banner');
+                const alertCount = document.getElementById('k8s-alert-count');
+                const alertDetail = document.getElementById('k8s-alert-detail');
+
+                const total = summary.critical + summary.warning;
+                if (total === 0) {
+                    banner.style.display = 'flex';
+                    banner.className = 'alert-banner healthy';
+                    alertCount.textContent = 'No alerts';
+                    alertDetail.textContent = 'Cluster is healthy';
+                } else {
+                    banner.style.display = 'flex';
+                    banner.className = `alert-banner ${summary.critical > 0 ? 'critical' : 'warning'}`;
+                    alertCount.textContent = `${total} alert${total !== 1 ? 's' : ''}`;
+
+                    // Show first few alert messages
+                    const details = alerts.slice(0, 3).map(a => a.message).join('; ');
+                    alertDetail.textContent = details.length > 100 ? details.substring(0, 100) + '...' : details;
+                }
+
+            } catch (error) {
+                console.error('Failed to load K8s alerts:', error);
+            }
+        }
+
+        async function loadK8sPods() {
+            try {
+                const data = await fetch('/dashboard/api/k8s/pods/').then(r => r.json());
+                const pods = data.pods || [];
+                const issues = data.summary?.by_issue || {};
+
+                const issuesContainer = document.getElementById('k8s-issues-container');
+                const issuesBody = document.getElementById('k8s-issues-body');
+
+                // Find pods with issues
+                const problemPods = pods.filter(pod => {
+                    // Check for restart count > 3
+                    if (pod.container_statuses?.some(cs => cs.restart_count > 3)) return true;
+                    // Check for waiting state with problem reason
+                    if (pod.container_statuses?.some(cs =>
+                        cs.state === 'waiting' && ['CrashLoopBackOff', 'ImagePullBackOff', 'ErrImagePull'].includes(cs.reason)
+                    )) return true;
+                    // Check for OOMKilled
+                    if (pod.container_statuses?.some(cs => cs.reason === 'OOMKilled')) return true;
+                    // Check for long pending
+                    if (pod.phase === 'Pending' && pod.age_seconds > 300) return true;
+                    return false;
+                });
+
+                if (problemPods.length === 0) {
+                    issuesContainer.style.display = 'none';
+                } else {
+                    issuesContainer.style.display = 'block';
+                    issuesBody.innerHTML = problemPods.slice(0, 10).map(pod => {
+                        // Determine issue type
+                        let issue = 'Unknown';
+                        let issueClass = '';
+
+                        for (const cs of (pod.container_statuses || [])) {
+                            if (cs.restart_count > 3 || cs.reason === 'CrashLoopBackOff') {
+                                issue = `CrashLoop (${cs.restart_count} restarts)`;
+                                issueClass = 'issue-crashloop';
+                                break;
+                            }
+                            if (['ImagePullBackOff', 'ErrImagePull'].includes(cs.reason)) {
+                                issue = 'ImagePullError';
+                                issueClass = 'issue-imagepull';
+                                break;
+                            }
+                            if (cs.reason === 'OOMKilled') {
+                                issue = 'OOMKilled';
+                                issueClass = 'issue-oom';
+                                break;
+                            }
+                        }
+
+                        if (pod.phase === 'Pending' && pod.age_seconds > 300) {
+                            issue = `Pending ${Math.floor(pod.age_seconds / 60)}m`;
+                            issueClass = 'issue-pending';
+                        }
+
+                        const ageStr = pod.age_seconds
+                            ? pod.age_seconds < 60 ? `${pod.age_seconds}s`
+                            : pod.age_seconds < 3600 ? `${Math.floor(pod.age_seconds / 60)}m`
+                            : `${Math.floor(pod.age_seconds / 3600)}h`
+                            : '--';
+
+                        return `
+                            <tr>
+                                <td><code>${escapeHtml(pod.name.substring(0, 30))}${pod.name.length > 30 ? '...' : ''}</code></td>
+                                <td>${escapeHtml(pod.namespace)}</td>
+                                <td><span class="issue-reason ${issueClass}">${escapeHtml(issue)}</span></td>
+                                <td>${escapeHtml(pod.node) || '-'}</td>
+                                <td>${ageStr}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+            } catch (error) {
+                console.error('Failed to load K8s pods:', error);
+            }
+        }
+
+        async function doK8sLookup() {
+            const input = document.getElementById('k8s-lookup-input').value.trim();
+            if (!input) return;
+
+            const resultDiv = document.getElementById('k8s-lookup-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<div class="loading">Searching...</div>';
+
+            try {
+                const param = input.startsWith('bot_') ? 'bot_id' : 'pod_name';
+                const data = await fetch(`/dashboard/api/k8s/bot-lookup/?${param}=${encodeURIComponent(input)}`).then(r => r.json());
+
+                if (!data.found) {
+                    resultDiv.innerHTML = '<div class="lookup-result"><p>No results found for: ' + escapeHtml(input) + '</p></div>';
+                    return;
+                }
+
+                let html = '<div class="lookup-result">';
+
+                // Bot info
+                if (data.bot) {
+                    html += '<h4>Bot Record</h4>';
+                    html += `
+                        <div class="detail-row"><span class="detail-label">Object ID:</span><span class="detail-value"><code>${escapeHtml(data.bot.object_id)}</code></span></div>
+                        <div class="detail-row"><span class="detail-label">State:</span><span class="detail-value"><span class="badge ${getBadgeClass(data.bot.state)}">${escapeHtml(data.bot.state)}</span></span></div>
+                        <div class="detail-row"><span class="detail-label">Meeting URL:</span><span class="detail-value">${escapeHtml(data.bot.meeting_url) || '-'}</span></div>
+                        <div class="detail-row"><span class="detail-label">Last Heartbeat:</span><span class="detail-value">${data.bot.heartbeat_age_seconds !== null ? data.bot.heartbeat_age_seconds + 's ago' : 'Never'}</span></div>
+                        <div class="detail-row"><span class="detail-label">Join At:</span><span class="detail-value">${data.bot.join_at ? new Date(data.bot.join_at).toLocaleString() : '-'}</span></div>
+                    `;
+
+                    if (data.events && data.events.length > 0) {
+                        html += '<h4 style="margin-top: 12px;">Recent Bot Events</h4>';
+                        html += '<div class="events-list">';
+                        for (const e of data.events) {
+                            html += `<div class="event-item">${new Date(e.timestamp).toLocaleTimeString()} - ${escapeHtml(e.type)}</div>`;
+                        }
+                        html += '</div>';
+                    }
+                }
+
+                // Pod info
+                if (data.pod) {
+                    html += '<h4 style="margin-top: 16px;">Kubernetes Pod</h4>';
+                    html += `
+                        <div class="detail-row"><span class="detail-label">Pod Name:</span><span class="detail-value"><code>${escapeHtml(data.pod.name)}</code></span></div>
+                        <div class="detail-row"><span class="detail-label">Namespace:</span><span class="detail-value">${escapeHtml(data.pod.namespace)}</span></div>
+                        <div class="detail-row"><span class="detail-label">Phase:</span><span class="detail-value"><span class="badge ${data.pod.phase === 'Running' ? 'badge-success' : 'badge-warning'}">${escapeHtml(data.pod.phase)}</span></span></div>
+                        <div class="detail-row"><span class="detail-label">Node:</span><span class="detail-value">${escapeHtml(data.pod.node) || '-'}</span></div>
+                        <div class="detail-row"><span class="detail-label">Created:</span><span class="detail-value">${data.pod.created ? new Date(data.pod.created).toLocaleString() : '-'}</span></div>
+                    `;
+
+                    if (data.pod.events && data.pod.events.length > 0) {
+                        html += '<h4 style="margin-top: 12px;">Recent K8s Events</h4>';
+                        html += '<div class="events-list">';
+                        for (const e of data.pod.events) {
+                            const eventClass = e.type === 'Warning' ? 'badge-warning' : 'badge-info';
+                            html += `<div class="event-item"><span class="badge ${eventClass}">${e.type}</span> ${escapeHtml(e.reason)}: ${escapeHtml(e.message)}</div>`;
+                        }
+                        html += '</div>';
+                    }
+                }
+
+                if (data.pod_error) {
+                    html += `<p style="color: #dc3545; margin-top: 12px;">Pod lookup error: ${escapeHtml(data.pod_error)}</p>`;
+                }
+
+                html += '</div>';
+                resultDiv.innerHTML = html;
+
+            } catch (error) {
+                console.error('Failed to lookup bot/pod:', error);
+                resultDiv.innerHTML = '<div class="lookup-result"><p style="color: #dc3545;">Lookup failed: ' + escapeHtml(error.message) + '</p></div>';
+            }
+        }
+
+        // Allow enter key in lookup input
+        document.getElementById('k8s-lookup-input')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') doK8sLookup();
+        });
 
         // Live Logs Stream
         let logEventSource = null;

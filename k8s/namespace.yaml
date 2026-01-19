@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: attendee
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: meeting-recorder
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: attendee-webpage-streamer
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: webpage-streamer

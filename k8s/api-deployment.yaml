@@ -1,0 +1,92 @@
+# Attendee API Server Deployment
+# This runs the Django web server that handles API requests
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: attendee-api
+  namespace: attendee
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: attendee-api
+  template:
+    metadata:
+      labels:
+        app: attendee-api
+        app.kubernetes.io/name: attendee
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: attendee-bot-creator
+      containers:
+      - name: api
+        image: ghcr.io/hjs48/attendee:latest
+        imagePullPolicy: Always
+        command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+        ports:
+        - containerPort: 8000
+          name: http
+        envFrom:
+        - configMapRef:
+            name: env
+        - secretRef:
+            name: app-secrets
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        readinessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+# Service to expose the API within the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: attendee-api
+  namespace: attendee
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app: attendee-api
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+# NodePort service for external access (temporary - use Ingress in production)
+apiVersion: v1
+kind: Service
+metadata:
+  name: attendee-api-external
+  namespace: attendee
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app: attendee-api
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    nodePort: 30800
+  type: NodePort

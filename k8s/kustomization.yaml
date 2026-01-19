@@ -1,0 +1,22 @@
+# Kustomize configuration for Attendee Kubernetes deployment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: attendee
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - api-deployment.yaml
+  - scheduler-deployment.yaml
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: attendee
+
+# Image configuration - update tag here for new releases
+images:
+  - name: ghcr.io/hjs48/attendee
+    newTag: latest

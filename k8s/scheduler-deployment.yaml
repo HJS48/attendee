@@ -1,0 +1,40 @@
+# Attendee Scheduler Deployment
+# This runs the scheduler that launches bot pods at the right time
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: attendee-scheduler
+  namespace: attendee
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: attendee-scheduler
+  template:
+    metadata:
+      labels:
+        app: attendee-scheduler
+        app.kubernetes.io/name: attendee
+        app.kubernetes.io/component: scheduler
+    spec:
+      serviceAccountName: attendee-bot-creator
+      containers:
+      - name: scheduler
+        image: ghcr.io/hjs48/attendee:latest
+        imagePullPolicy: Always
+        command: ["python", "manage.py", "run_scheduler"]
+        envFrom:
+        - configMapRef:
+            name: env
+        - secretRef:
+            name: app-secrets
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"

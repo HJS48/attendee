@@ -34,12 +34,15 @@ services:
     volumes:
      - .:/attendee
      - /var/run/docker.sock:/var/run/docker.sock:ro
+     - /home/deploy/.kube/config-docker:/home/app/.kube/config:ro
     group_add:
       - "988"  # docker group on host for socket access
     networks:
       - attendee_network
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - /home/deploy/.infisical-agent/secrets.env
     environment:
@@ -49,6 +52,8 @@ services:
       - DISABLE_RATE_LIMITING=true
       - USER_THROTTLE_RATE=100000/hour
       - ANON_THROTTLE_RATE=100000/hour
+      - INFRASTRUCTURE_MODE=kubernetes
+      - KUBERNETES_SKIP_TLS_VERIFY=true
     command: python manage.py runserver 0.0.0.0:8000
     entrypoint: []
 
@@ -81,6 +86,8 @@ services:
        - postgres:/data/postgres
     networks:
       - attendee_network
+    ports:
+      - "0.0.0.0:5432:5432"
     restart: unless-stopped
 
 
@@ -89,7 +96,7 @@ services:
     networks:
       - attendee_network
     ports:
-      - "127.0.0.1:6379:6379"
+      - "0.0.0.0:6379:6379"
     restart: unless-stopped
     volumes:
       - redis:/data/redis

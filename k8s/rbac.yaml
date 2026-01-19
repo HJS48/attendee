@@ -1,0 +1,73 @@
+# Service Account for Attendee components that need to manage bot pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: attendee-bot-creator
+  namespace: attendee
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: bot-creator
+---
+# Role to manage pods in attendee namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bot-pod-manager
+  namespace: attendee
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "delete", "get", "list", "watch", "patch"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+---
+# Bind the role to the service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: attendee-bot-creator-binding
+  namespace: attendee
+subjects:
+- kind: ServiceAccount
+  name: attendee-bot-creator
+  namespace: attendee
+roleRef:
+  kind: Role
+  name: bot-pod-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+# Role for webpage-streamer namespace (if using webpage streamer)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webpage-streamer-pod-manager
+  namespace: attendee-webpage-streamer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "delete", "get", "list", "watch", "patch"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["create", "delete", "get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+---
+# Bind webpage-streamer role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: attendee-webpage-streamer-binding
+  namespace: attendee-webpage-streamer
+subjects:
+- kind: ServiceAccount
+  name: attendee-bot-creator
+  namespace: attendee
+roleRef:
+  kind: Role
+  name: webpage-streamer-pod-manager
+  apiGroup: rbac.authorization.k8s.io
