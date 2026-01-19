@@ -9,10 +9,27 @@ from django.dispatch import receiver
 from django.utils import timezone
 from django.conf import settings
 
-from bots.models import CalendarEvent, Bot, BotStates
+from bots.models import CalendarEvent, Bot, BotStates, Credentials
 from bots.bots_api_utils import create_bot, BotCreationSource
 
 logger = logging.getLogger(__name__)
+
+
+def get_transcription_settings_for_project(project):
+    """
+    Determine transcription settings for a project.
+    Uses Deepgram if credentials exist, otherwise falls back to platform captions.
+    """
+    has_deepgram = Credentials.objects.filter(
+        project=project,
+        credential_type=Credentials.CredentialTypes.DEEPGRAM
+    ).exists()
+
+    if has_deepgram:
+        return {'deepgram': {'language': 'en'}}
+    else:
+        logger.info(f"No Deepgram credentials for project {project.object_id}, using platform captions")
+        return {'meeting_closed_captions': {}}
 
 
 @receiver(post_save, sender=CalendarEvent)
@@ -65,11 +82,13 @@ def auto_create_bot_for_event(sender, instance, created, **kwargs):
         logger.info(f"Reactivated bot {ended_bot.object_id} for event {instance.object_id}")
         return
 
-    # Create new bot
+    # Create new bot - use Deepgram if available, fallback to platform captions
+    transcription_settings = get_transcription_settings_for_project(instance.calendar.project)
     bot_data = {
         'bot_name': 'Meeting Assistant',
         'deduplication_key': dedup_key,
         'calendar_event_id': str(instance.object_id),
+        'transcription_settings': transcription_settings,
     }
 
     try:

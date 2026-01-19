@@ -385,18 +385,28 @@
 
         <!-- Recent Failures -->
         <div class="card">
-            <h2>Recent Failures (Last 7 Days)</h2>
+            <div class="card-header">
+                <h2>Recent Failures (Last 7 Days)</h2>
+                <span class="count-badge" id="failure-count">0 failures</span>
+            </div>
+
+            <!-- Failure breakdown by reason -->
+            <div class="pipeline-grid" id="failure-summary" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 16px;">
+                <span class="loading">Loading...</span>
+            </div>
+
             <table id="failures-table">
                 <thead>
                     <tr>
                         <th>Bot ID</th>
+                        <th>Event Type</th>
                         <th>Reason</th>
                         <th>Meeting URL</th>
                         <th>Time</th>
                     </tr>
                 </thead>
                 <tbody id="failures-body">
-                    <tr><td colspan="4" class="loading">Loading...</td></tr>
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -604,22 +614,70 @@
             }
         }
 
+        // Unique colors for failure reasons
+        const failureReasonColors = {
+            'Request Denied': { bg: '#fee2e2', border: '#ef4444', text: '#dc2626' },
+            'Waiting Room Timeout': { bg: '#fef3c7', border: '#f59e0b', text: '#d97706' },
+            'Not Found': { bg: '#dbeafe', border: '#3b82f6', text: '#2563eb' },
+            'Invalid URL': { bg: '#e0e7ff', border: '#6366f1', text: '#4f46e5' },
+            'Requires Sign In': { bg: '#fce7f3', border: '#ec4899', text: '#db2777' },
+            'Requires Passcode': { bg: '#f3e8ff', border: '#a855f7', text: '#9333ea' },
+            'Room Full': { bg: '#ffedd5', border: '#f97316', text: '#ea580c' },
+            'Not Started': { bg: '#d1fae5', border: '#10b981', text: '#059669' },
+            'Has Ended': { bg: '#e5e7eb', border: '#6b7280', text: '#4b5563' },
+            'Account Not Found': { bg: '#fef9c3', border: '#eab308', text: '#ca8a04' },
+            'Generic Error': { bg: '#f1f5f9', border: '#64748b', text: '#475569' },
+            'Heartbeat Timeout': { bg: '#fecaca', border: '#f87171', text: '#dc2626' },
+        };
+        const defaultFailureColor = { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
+
+        function getFailureColor(reason) {
+            return failureReasonColors[reason] || defaultFailureColor;
+        }
+
         async function loadFailures() {
             try {
-                const failures = await fetch('/dashboard/api/failures/').then(r => r.json());
+                const data = await fetch('/dashboard/api/failures/').then(r => r.json());
 
-                const failuresBody = document.getElementById('failures-body');
-                if (failures.failures.length === 0) {
-                    failuresBody.innerHTML = '<tr><td colspan="4">No failures in the last 7 days</td></tr>';
+                // Update total count
+                document.getElementById('failure-count').textContent = `${data.total} failures`;
+
+                // Render summary counts
+                const summaryDiv = document.getElementById('failure-summary');
+                const summaryEntries = Object.entries(data.summary || {});
+                if (summaryEntries.length === 0) {
+                    summaryDiv.innerHTML = '<span style="color:#888;font-size:13px;">No failures</span>';
                 } else {
-                    failuresBody.innerHTML = failures.failures.slice(0, 20).map(f => `
+                    summaryDiv.innerHTML = summaryEntries
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([reason, count]) => {
+                            const color = getFailureColor(reason);
+                            return `
+                            <div class="pipeline-col">
+                                <h3><span class="badge" style="background:${color.bg}; color:${color.text}; border: 1px solid ${color.border};">${escapeHtml(reason)}</span></h3>
+                                <div class="metric-row">
+                                    <span class="metric-value metric-error">${count}</span>
+                                </div>
+                            </div>
+                        `}).join('');
+                }
+
+                // Render table with new columns
+                const failuresBody = document.getElementById('failures-body');
+                if (data.failures.length === 0) {
+                    failuresBody.innerHTML = '<tr><td colspan="5">No failures in the last 7 days</td></tr>';
+                } else {
+                    failuresBody.innerHTML = data.failures.slice(0, 20).map(f => {
+                        const color = getFailureColor(f.reason);
+                        return `
                         <tr>
                             <td><code>${f.bot_id.substring(0, 8)}...</code></td>
-                            <td><span class="badge badge-error">${f.event_sub_type_name}</span></td>
+                            <td><span class="badge ${f.event_type_label === 'Fatal Error' ? 'badge-error' : 'badge-warning'}">${escapeHtml(f.event_type_label)}</span></td>
+                            <td><span class="badge" style="background:${color.bg}; color:${color.text}; border: 1px solid ${color.border};">${escapeHtml(f.reason)}</span></td>
                             <td class="url-cell" title="${escapeHtml(f.meeting_url)}">${f.meeting_url || '-'}</td>
                             <td>${new Date(f.timestamp).toLocaleString()}</td>
                         </tr>
-                    `).join('');
+                    `}).join('');
                 }
             } catch (error) {
                 console.error('Failed to load failures:', error);

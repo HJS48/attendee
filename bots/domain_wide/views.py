@@ -102,6 +102,8 @@ class RecentFailuresAPI(View):
     """Recent failures with details - no auth required."""
 
     def get(self, request):
+        from collections import Counter
+
         days = int(request.GET.get('days', 7))
         cutoff = timezone.now() - timedelta(days=days)
 
@@ -111,26 +113,44 @@ class RecentFailuresAPI(View):
         ).select_related('bot').order_by('-created_at')[:50]
 
         sub_type_names = {
-            1: 'room_full',
-            2: 'not_started',
-            3: 'has_ended',
-            4: 'invalid_url',
-            5: 'not_found',
-            6: 'requires_sign_in',
-            7: 'requires_passcode',
-            8: 'account_not_found',
-            9: 'request_denied',
-            10: 'generic_error',
+            1: 'Room Full',
+            2: 'Not Started',
+            3: 'Has Ended',
+            4: 'Invalid URL',
+            5: 'Not Found',
+            6: 'Requires Sign In',
+            7: 'Requires Passcode',
+            8: 'Account Not Found',
+            9: 'Request Denied',
+            10: 'Generic Error',
+            11: 'Waiting Room Timeout',
+            12: 'Heartbeat Timeout',
         }
 
-        return JsonResponse({'failures': [{
-            'bot_id': str(f.bot.object_id),
-            'meeting_url': f.bot.meeting_url,
-            'event_type': f.event_type,
-            'event_sub_type': f.event_sub_type,
-            'event_sub_type_name': sub_type_names.get(f.event_sub_type, f'unknown({f.event_sub_type})'),
-            'timestamp': f.created_at.isoformat(),
-        } for f in failures]})
+        subtype_counts = Counter()
+        failures_list = []
+
+        for f in failures:
+            event_type_label = 'Could Not Join' if f.event_type == BotEventTypes.COULD_NOT_JOIN else 'Fatal Error'
+            reason = sub_type_names.get(f.event_sub_type, f'Unknown ({f.event_sub_type})')
+
+            subtype_counts[reason] += 1
+
+            failures_list.append({
+                'bot_id': str(f.bot.object_id),
+                'meeting_url': f.bot.meeting_url,
+                'event_type': f.event_type,
+                'event_type_label': event_type_label,
+                'event_sub_type': f.event_sub_type,
+                'reason': reason,
+                'timestamp': f.created_at.isoformat(),
+            })
+
+        return JsonResponse({
+            'failures': failures_list,
+            'summary': dict(subtype_counts),
+            'total': len(failures_list),
+        })
 
 
 class PipelineStatusAPI(View):

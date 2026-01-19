@@ -67,7 +67,8 @@ def sync_bot_with_calendar_event(bot: Bot, calendar_event: CalendarEvent):
         update_data["meeting_url"] = calendar_event.meeting_url
 
     # Check join_at (bot.join_at should match calendar_event.start_time)
-    if bot.join_at != calendar_event.start_time:
+    join_at_changed = bot.join_at != calendar_event.start_time
+    if join_at_changed:
         logger.info(f"Bot {bot.object_id} join_at differs from calendar event start_time: {bot.join_at} -> {calendar_event.start_time}")
         update_data["join_at"] = calendar_event.start_time
 
@@ -79,6 +80,18 @@ def sync_bot_with_calendar_event(bot: Bot, calendar_event: CalendarEvent):
             logger.error(f"Failed to patch bot {bot.object_id}: {error}")
         else:
             logger.info(f"Successfully patched bot {bot.object_id}")
+
+    # Update deduplication_key if join_at or meeting_url changed and key follows auto- pattern
+    # This prevents rescheduled meetings from blocking other meetings on the original date
+    if (join_at_changed or "meeting_url" in update_data) and bot.deduplication_key and bot.deduplication_key.startswith("auto-"):
+        new_date_str = calendar_event.start_time.strftime('%Y-%m-%d')
+        meeting_url_truncated = calendar_event.meeting_url[:50] if calendar_event.meeting_url else ''
+        new_dedup_key = f"auto-{new_date_str}-{meeting_url_truncated}"
+
+        if bot.deduplication_key != new_dedup_key:
+            logger.info(f"Updating bot {bot.object_id} deduplication_key: {bot.deduplication_key} -> {new_dedup_key}")
+            bot.deduplication_key = new_dedup_key
+            bot.save(update_fields=['deduplication_key'])
 
 
 def sync_bots_for_calendar_event(calendar_event: CalendarEvent):
