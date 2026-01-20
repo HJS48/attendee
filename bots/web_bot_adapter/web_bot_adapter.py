@@ -281,10 +281,14 @@ class WebBotAdapter(BotAdapter):
             self.only_one_participant_in_meeting_at = None
 
     def handle_removed_from_meeting(self):
+        if self.left_meeting:
+            return
         self.left_meeting = True
         self.send_message_callback({"message": self.Messages.MEETING_ENDED})
 
     def handle_meeting_ended(self):
+        if self.left_meeting:
+            return
         self.left_meeting = True
         self.send_message_callback({"message": self.Messages.MEETING_ENDED})
 
