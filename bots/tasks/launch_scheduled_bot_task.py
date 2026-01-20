@@ -8,8 +8,11 @@ from bots.models import Bot, BotEventManager, BotEventSubTypes, BotEventTypes, B
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, soft_time_limit=3600)
-def launch_scheduled_bot(self, bot_id: int, bot_join_at: str):
+def launch_scheduled_bot_sync(bot_id: int, bot_join_at: str):
+    """
+    Synchronous version of launch_scheduled_bot for direct execution without Celery.
+    Used in Kubernetes mode where the scheduler calls this directly.
+    """
     logger.info(f"Launching scheduled bot {bot_id} with join_at {bot_join_at}")
 
     # Transition the bot to STAGED
@@ -27,3 +30,12 @@ def launch_scheduled_bot(self, bot_id: int, bot_join_at: str):
     logger.info(f"Transitioning bot {bot_id} ({bot.object_id}) to STAGED")
     BotEventManager.create_event(bot=bot, event_type=BotEventTypes.STAGED, event_metadata={"join_at": bot_join_at})
     launch_bot(bot)
+
+
+@shared_task(bind=True, soft_time_limit=3600)
+def launch_scheduled_bot(self, bot_id: int, bot_join_at: str):
+    """
+    Celery task wrapper for launch_scheduled_bot_sync.
+    Kept for backward compatibility with Docker/Celery mode.
+    """
+    launch_scheduled_bot_sync(bot_id, bot_join_at)

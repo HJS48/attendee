@@ -12,12 +12,11 @@ from django.conf import settings
 from bots.bot_pod_creator import BotPodCreator
 
 
-@shared_task(bind=True, soft_time_limit=3600)
-def restart_bot_pod(self, bot_id):
+def restart_bot_pod_sync(bot_id):
     """
-    Restart a bot pod.
+    Synchronous version of restart_bot_pod for direct execution without Celery.
+    Used in Kubernetes mode where Celery worker is not available.
     """
-
     logger.info(f"Restarting bot pod for bot {bot_id}")
 
     bot = Bot.objects.get(id=bot_id)
@@ -91,3 +90,12 @@ def restart_bot_pod(self, bot_id):
     )
 
     logger.info(f"Bot pod create result: {bot_pod_create_result}")
+
+
+@shared_task(bind=True, soft_time_limit=3600)
+def restart_bot_pod(self, bot_id):
+    """
+    Celery task wrapper for restart_bot_pod_sync.
+    Kept for backward compatibility with Docker/Celery mode.
+    """
+    restart_bot_pod_sync(bot_id)

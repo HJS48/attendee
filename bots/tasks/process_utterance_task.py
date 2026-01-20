@@ -55,6 +55,77 @@ def is_retryable_failure(failure_data):
     ]
 
 
+# Retry configuration for sync version
+SYNC_MAX_RETRIES = 6
+SYNC_RETRY_BACKOFF_BASE = 2
+
+
+def process_utterance_sync(utterance_id, retry_count=0):
+    """
+    Synchronous version of process_utterance for direct execution without Celery.
+    Used in Kubernetes mode where Celery worker is not available.
+    Implements retry logic with exponential backoff.
+    """
+    utterance = Utterance.objects.get(id=utterance_id)
+    logger.info(f"Processing utterance {utterance_id} (sync)")
+
+    recording = utterance.recording
+
+    if utterance.failure_data:
+        logger.info(f"process_utterance_sync was called for utterance {utterance_id} but it has already failed, skipping")
+        return
+
+    if utterance.transcription is None:
+        utterance.transcription_attempt_count += 1
+
+        transcription, failure_data = get_transcription(utterance)
+
+        if failure_data:
+            if utterance.transcription_attempt_count < 5 and is_retryable_failure(failure_data):
+                utterance.save()
+                if retry_count < SYNC_MAX_RETRIES:
+                    backoff_time = SYNC_RETRY_BACKOFF_BASE ** (retry_count + 1)
+                    logger.info(f"Retrying utterance {utterance_id} (attempt {retry_count + 1}/{SYNC_MAX_RETRIES}) in {backoff_time}s")
+                    time.sleep(backoff_time)
+                    return process_utterance_sync(utterance_id, retry_count + 1)
+                else:
+                    logger.error(f"Utterance {utterance_id} failed after max retries: {failure_data}")
+                    utterance.failure_data = failure_data
+                    utterance.save()
+                    return
+            else:
+                utterance.failure_data = failure_data
+                utterance.save()
+                logger.info(f"Transcription failed for utterance {utterance_id}, failure data: {failure_data}")
+                return
+
+        if utterance.audio_blob:
+            utterance.audio_blob = b""
+
+        if utterance.audio_chunk and not utterance.recording.bot.record_async_transcription_audio_chunks():
+            utterance_audio_chunk = utterance.audio_chunk
+            utterance_audio_chunk.audio_blob = b""
+            utterance_audio_chunk.save()
+
+        utterance.transcription = transcription
+        utterance.save()
+
+        logger.info(f"Transcription complete for utterance {utterance_id}")
+
+        if utterance.transcription.get("transcript") and utterance.async_transcription is None:
+            trigger_webhook(
+                webhook_trigger_type=WebhookTriggerTypes.TRANSCRIPT_UPDATE,
+                bot=recording.bot,
+                payload=utterance_webhook_payload(utterance),
+            )
+
+    if utterance.async_transcription is not None:
+        return
+
+    if RecordingManager.is_terminal_state(utterance.recording.state) and Utterance.objects.filter(recording=utterance.recording, transcription__isnull=True).count() == 0:
+        RecordingManager.set_recording_transcription_complete(utterance.recording)
+
+
 def get_transcription(utterance):
     try:
         # Regular transcription providers that support async transcription

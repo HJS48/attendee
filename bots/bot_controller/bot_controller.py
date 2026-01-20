@@ -1280,7 +1280,8 @@ class BotController:
         RecordingManager.set_recording_transcription_in_progress(recording_in_progress)
 
     def process_individual_audio_chunk(self, message):
-        from bots.tasks.process_utterance_task import process_utterance
+        from bots.task_executor import is_kubernetes_mode, task_executor
+        from bots.tasks.process_utterance_task import process_utterance, process_utterance_sync
 
         logger.info("Received message that new individual audio chunk was detected")
 
@@ -1329,8 +1330,11 @@ class BotController:
         # Set the recording transcription in progress
         RecordingManager.set_recording_transcription_in_progress(recording_in_progress)
 
-        # Process the utterance immediately
-        process_utterance.delay(utterance.id)
+        # Process the utterance - use task executor in K8s mode
+        if is_kubernetes_mode():
+            task_executor.submit(process_utterance_sync, utterance.id)
+        else:
+            process_utterance.delay(utterance.id)
         return
 
     def on_new_chat_message(self, chat_message):
@@ -1601,7 +1605,8 @@ class BotController:
             return
 
         if message.get("message") == BotAdapter.Messages.BLOCKED_BY_PLATFORM_REPEATEDLY:
-            from bots.tasks.restart_bot_pod_task import restart_bot_pod
+            from bots.task_executor import is_kubernetes_mode, task_executor
+            from bots.tasks.restart_bot_pod_task import restart_bot_pod, restart_bot_pod_sync
 
             bot_start_time = self.bot_in_db.join_at or self.bot_in_db.created_at
             if bot_start_time < timezone.now() - timedelta(minutes=15):
@@ -1620,7 +1625,10 @@ class BotController:
 
             logger.info("Received message that we were blocked by platform repeatedly, so recreating pod")
             # Run task to restart the bot pod with 1 minute delay
-            restart_bot_pod.apply_async(args=[self.bot_in_db.id], countdown=60)
+            if is_kubernetes_mode():
+                task_executor.submit_delayed(restart_bot_pod_sync, countdown=60, args=(self.bot_in_db.id,))
+            else:
+                restart_bot_pod.apply_async(args=[self.bot_in_db.id], countdown=60)
             # Don't do the normal cleanup tasks because we'll be restarting the pod
             if self.main_loop and self.main_loop.is_running():
                 logger.info("Quitting main loop")

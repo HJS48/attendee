@@ -22,6 +22,9 @@ data:
 
   # Kubernetes mode settings
   LAUNCH_BOT_METHOD: "kubernetes"
+  TASK_EXECUTION_MODE: "kubernetes"
+  CUBER_RELEASE_VERSION: "latest"
+  BOT_POD_IMAGE: "ghcr.io/hjs48/attendee"
   BOT_POD_NAMESPACE: "attendee"
   WEBPAGE_STREAMER_POD_NAMESPACE: "attendee-webpage-streamer"
   BOT_POD_CONFIG_MAP_NAME: "env"
@@ -29,7 +32,7 @@ data:
   BOT_POD_SERVICE_ACCOUNT_NAME: "attendee-bot-creator"
 
   # Bot resource limits (reduced for single-node setup)
-  BOT_CPU_REQUEST: "2"
+  BOT_CPU_REQUEST: "1500m"
   BOT_MEMORY_REQUEST: "2Gi"
   BOT_MEMORY_LIMIT: "3Gi"
   BOT_EPHEMERAL_STORAGE_REQUEST: "5Gi"

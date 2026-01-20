@@ -1746,6 +1746,294 @@ class KubernetesNodesAPI(View):
             }, status=500)
 
 
+class KubernetesEventsAPI(View):
+    """API for recent Kubernetes cluster events (warnings, errors)."""
+
+    def get(self, request):
+        from django.conf import settings
+        from kubernetes import client
+
+        try:
+            v1 = _init_kubernetes_client()
+
+            namespaces = [
+                getattr(settings, 'BOT_POD_NAMESPACE', 'attendee'),
+                getattr(settings, 'WEBPAGE_STREAMER_POD_NAMESPACE', 'attendee-webpage-streamer'),
+            ]
+
+            events_list = []
+            event_counts = {'Normal': 0, 'Warning': 0}
+
+            for ns in namespaces:
+                try:
+                    events = v1.list_namespaced_event(
+                        namespace=ns,
+                        limit=100,
+                    )
+
+                    for event in events.items:
+                        event_type = event.type or 'Normal'
+                        event_counts[event_type] = event_counts.get(event_type, 0) + 1
+
+                        # Calculate age
+                        age_seconds = None
+                        event_time = event.last_timestamp or event.event_time or event.metadata.creation_timestamp
+                        if event_time:
+                            age_seconds = int((timezone.now() - event_time).total_seconds())
+
+                        # Only include recent events (last 2 hours) or warnings
+                        if age_seconds and age_seconds > 7200 and event_type == 'Normal':
+                            continue
+
+                        events_list.append({
+                            'namespace': ns,
+                            'type': event_type,
+                            'reason': event.reason,
+                            'message': event.message[:200] if event.message else '',
+                            'object': f"{event.involved_object.kind}/{event.involved_object.name}" if event.involved_object else '',
+                            'count': event.count or 1,
+                            'age_seconds': age_seconds,
+                            'first_seen': event.first_timestamp.isoformat() if event.first_timestamp else None,
+                            'last_seen': event_time.isoformat() if event_time else None,
+                        })
+
+                except client.ApiException as e:
+                    logger.warning(f"Failed to list events in namespace {ns}: {e}")
+
+            # Sort by recency (newest first)
+            events_list.sort(key=lambda x: x['age_seconds'] or 0)
+
+            # Separate warnings for prominence
+            warnings = [e for e in events_list if e['type'] == 'Warning']
+            normal = [e for e in events_list if e['type'] == 'Normal'][:20]
+
+            return JsonResponse({
+                'events': warnings + normal,
+                'warnings': warnings,
+                'counts': event_counts,
+            })
+
+        except Exception as e:
+            logger.exception(f"Failed to get Kubernetes events: {e}")
+            return JsonResponse({
+                'error': str(e),
+                'events': [],
+                'warnings': [],
+                'counts': {},
+            }, status=500)
+
+
+class KubernetesDeploymentsAPI(View):
+    """API for Kubernetes deployment status."""
+
+    def get(self, request):
+        from django.conf import settings
+        from kubernetes import client
+
+        try:
+            # Initialize kubernetes client first (loads config)
+            _init_kubernetes_client()
+            apps_v1 = client.AppsV1Api()
+
+            namespaces = [
+                getattr(settings, 'BOT_POD_NAMESPACE', 'attendee'),
+            ]
+
+            deployments_list = []
+
+            for ns in namespaces:
+                try:
+                    deployments = apps_v1.list_namespaced_deployment(namespace=ns)
+
+                    for dep in deployments.items:
+                        name = dep.metadata.name
+                        spec_replicas = dep.spec.replicas or 0
+                        status = dep.status
+
+                        ready_replicas = status.ready_replicas or 0
+                        available_replicas = status.available_replicas or 0
+                        updated_replicas = status.updated_replicas or 0
+
+                        # Determine health status
+                        health = 'healthy'
+                        if ready_replicas < spec_replicas:
+                            health = 'degraded'
+                        if ready_replicas == 0 and spec_replicas > 0:
+                            health = 'unhealthy'
+
+                        # Check conditions for more details
+                        conditions = []
+                        progressing = None
+                        available = None
+                        for cond in (status.conditions or []):
+                            conditions.append({
+                                'type': cond.type,
+                                'status': cond.status,
+                                'reason': cond.reason,
+                                'message': cond.message[:100] if cond.message else '',
+                            })
+                            if cond.type == 'Progressing':
+                                progressing = cond.status == 'True'
+                            if cond.type == 'Available':
+                                available = cond.status == 'True'
+
+                        deployments_list.append({
+                            'namespace': ns,
+                            'name': name,
+                            'replicas': {
+                                'desired': spec_replicas,
+                                'ready': ready_replicas,
+                                'available': available_replicas,
+                                'updated': updated_replicas,
+                            },
+                            'health': health,
+                            'progressing': progressing,
+                            'available': available,
+                            'conditions': conditions,
+                            'image': dep.spec.template.spec.containers[0].image if dep.spec.template.spec.containers else '',
+                        })
+
+                except client.ApiException as e:
+                    logger.warning(f"Failed to list deployments in namespace {ns}: {e}")
+
+            # Summary counts
+            summary = {
+                'total': len(deployments_list),
+                'healthy': len([d for d in deployments_list if d['health'] == 'healthy']),
+                'degraded': len([d for d in deployments_list if d['health'] == 'degraded']),
+                'unhealthy': len([d for d in deployments_list if d['health'] == 'unhealthy']),
+            }
+
+            return JsonResponse({
+                'deployments': deployments_list,
+                'summary': summary,
+            })
+
+        except Exception as e:
+            logger.exception(f"Failed to get Kubernetes deployments: {e}")
+            return JsonResponse({
+                'error': str(e),
+                'deployments': [],
+                'summary': {'total': 0, 'healthy': 0, 'degraded': 0, 'unhealthy': 0},
+            }, status=500)
+
+
+class KubernetesResourceMetricsAPI(View):
+    """API for actual resource usage from metrics-server (if available)."""
+
+    def get(self, request):
+        from django.conf import settings
+        from kubernetes import client
+
+        try:
+            # Initialize kubernetes client first (loads config)
+            _init_kubernetes_client()
+            # Try to use metrics API (requires metrics-server)
+            custom_api = client.CustomObjectsApi()
+
+            namespace = getattr(settings, 'BOT_POD_NAMESPACE', 'attendee')
+
+            # Get node metrics
+            node_metrics = []
+            try:
+                nodes = custom_api.list_cluster_custom_object(
+                    group="metrics.k8s.io",
+                    version="v1beta1",
+                    plural="nodes"
+                )
+                for node in nodes.get('items', []):
+                    usage = node.get('usage', {})
+                    node_metrics.append({
+                        'name': node.get('metadata', {}).get('name'),
+                        'cpu': usage.get('cpu'),
+                        'memory': usage.get('memory'),
+                    })
+            except client.ApiException as e:
+                if e.status == 404:
+                    logger.info("Metrics-server not available for node metrics")
+                else:
+                    logger.warning(f"Failed to get node metrics: {e}")
+
+            # Get pod metrics
+            pod_metrics = []
+            try:
+                pods = custom_api.list_namespaced_custom_object(
+                    group="metrics.k8s.io",
+                    version="v1beta1",
+                    namespace=namespace,
+                    plural="pods"
+                )
+                for pod in pods.get('items', []):
+                    containers = pod.get('containers', [])
+                    total_cpu = 0
+                    total_memory = 0
+                    for container in containers:
+                        usage = container.get('usage', {})
+                        total_cpu += self._parse_cpu(usage.get('cpu', '0'))
+                        total_memory += self._parse_memory(usage.get('memory', '0'))
+
+                    pod_metrics.append({
+                        'name': pod.get('metadata', {}).get('name'),
+                        'cpu_millicores': total_cpu,
+                        'memory_bytes': total_memory,
+                    })
+            except client.ApiException as e:
+                if e.status == 404:
+                    logger.info("Metrics-server not available for pod metrics")
+                else:
+                    logger.warning(f"Failed to get pod metrics: {e}")
+
+            return JsonResponse({
+                'metrics_available': len(node_metrics) > 0 or len(pod_metrics) > 0,
+                'node_metrics': node_metrics,
+                'pod_metrics': pod_metrics,
+            })
+
+        except Exception as e:
+            logger.exception(f"Failed to get Kubernetes resource metrics: {e}")
+            return JsonResponse({
+                'error': str(e),
+                'metrics_available': False,
+                'node_metrics': [],
+                'pod_metrics': [],
+            }, status=500)
+
+    def _parse_cpu(self, cpu_str):
+        """Parse CPU string to millicores."""
+        if not cpu_str:
+            return 0
+        cpu_str = str(cpu_str)
+        if cpu_str.endswith('n'):
+            return int(cpu_str[:-1]) // 1000000
+        elif cpu_str.endswith('m'):
+            return int(cpu_str[:-1])
+        else:
+            try:
+                return int(float(cpu_str) * 1000)
+            except ValueError:
+                return 0
+
+    def _parse_memory(self, mem_str):
+        """Parse memory string to bytes."""
+        if not mem_str:
+            return 0
+        mem_str = str(mem_str)
+        multipliers = {
+            'Ki': 1024, 'Mi': 1024**2, 'Gi': 1024**3,
+            'K': 1000, 'M': 1000**2, 'G': 1000**3,
+        }
+        for suffix, mult in multipliers.items():
+            if mem_str.endswith(suffix):
+                try:
+                    return int(float(mem_str[:-len(suffix)]) * mult)
+                except ValueError:
+                    return 0
+        try:
+            return int(mem_str)
+        except ValueError:
+            return 0
+
+
 class LogStreamView(View):
     """Server-Sent Events stream for live logs (Docker or Kubernetes)."""
 
@@ -1786,11 +2074,21 @@ class LogStreamView(View):
 
         def parse_log_line(line):
             """Parse a log line and extract timestamp, level, message."""
+            import re
             log_level = 'INFO'
-            for lvl in ['ERROR', 'WARNING', 'CRITICAL', 'DEBUG', 'INFO']:
-                if lvl in line.upper():
-                    log_level = lvl
-                    break
+
+            # Skip diagnostic messages that contain 'error' in field names but aren't errors
+            if 'PerParticipantNonStreamingAudioInputManager diagnostic' in line:
+                log_level = 'DEBUG'
+            elif 'diagnostic info:' in line.lower():
+                log_level = 'DEBUG'
+            else:
+                # Look for log level indicators at word boundaries, not inside words
+                for lvl in ['ERROR', 'WARNING', 'CRITICAL', 'DEBUG', 'INFO']:
+                    # Match level as a standalone word (not part of field names like 'vad_error')
+                    if re.search(rf'\b{lvl}\b', line.upper()):
+                        log_level = lvl
+                        break
 
             timestamp = ''
             ts_match = re.match(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', line)
@@ -1809,30 +2107,136 @@ class LogStreamView(View):
                 'worker': 'attendee-worker',
             }
 
-            pod_pattern = k8s_patterns.get(source, source)
+            # Check if source is a direct bot pod name (starts with 'bot-')
+            is_bot_pod = source.startswith('bot-')
+            is_all_bots = source == 'all-bots'
+            pod_pattern = source if is_bot_pod else k8s_patterns.get(source, source)
             namespace = getattr(settings, 'BOT_POD_NAMESPACE', 'attendee')
 
             def k8s_log_stream():
                 try:
                     v1 = _init_kubernetes_client()
-
-                    # Find matching pod
                     pods = v1.list_namespaced_pod(namespace=namespace)
+
+                    if is_all_bots:
+                        # Aggregate logs from all bot pods
+                        import threading
+                        import queue
+                        from kubernetes import watch
+
+                        log_queue = queue.Queue()
+                        stop_event = threading.Event()
+
+                        def stream_pod_logs(pod_name, container_name):
+                            try:
+                                w = watch.Watch()
+                                for line in w.stream(
+                                    v1.read_namespaced_pod_log,
+                                    name=pod_name,
+                                    namespace=namespace,
+                                    container=container_name,
+                                    follow=True,
+                                    tail_lines=50,
+                                    timestamps=True,
+                                    _request_timeout=300
+                                ):
+                                    if stop_event.is_set():
+                                        break
+                                    if line:
+                                        log_queue.put((pod_name, line))
+                            except Exception as e:
+                                log_queue.put((pod_name, f"[Stream error: {e}]"))
+
+                        # Start threads for all bot pods
+                        threads = []
+                        bot_pods = [p for p in pods.items if p.metadata.name.startswith('bot-')]
+
+                        if not bot_pods:
+                            yield f"data: {json_module.dumps({'message': 'No bot pods found', 'level': 'INFO', 'time': ''})}\n\n"
+                            return
+
+                        for pod in bot_pods:
+                            if pod.status.phase in ['Running', 'Succeeded', 'Failed']:
+                                container = pod.spec.containers[0].name if pod.spec.containers else None
+                                t = threading.Thread(target=stream_pod_logs, args=(pod.metadata.name, container), daemon=True)
+                                t.start()
+                                threads.append(t)
+
+                        yield f"data: {json_module.dumps({'message': f'Streaming logs from {len(threads)} bot pods...', 'level': 'INFO', 'time': ''})}\n\n"
+
+                        # Read from queue and yield
+                        while True:
+                            try:
+                                pod_name, line = log_queue.get(timeout=1)
+                                if not level_matches(line, level):
+                                    continue
+                                timestamp, log_level, message = parse_log_line(line)
+                                # Shorten pod name for display
+                                short_pod = pod_name.replace('bot-pod-', '').replace('bot-', '')[:20]
+                                data = json_module.dumps({
+                                    'time': timestamp,
+                                    'level': log_level,
+                                    'message': f"[{short_pod}] {message}",
+                                    'pod': pod_name,
+                                })
+                                yield f"data: {data}\n\n"
+                            except queue.Empty:
+                                # Check if any threads are still alive
+                                if not any(t.is_alive() for t in threads):
+                                    break
+                                continue
+
+                        stop_event.set()
+                        return
+
+                    # Single pod streaming (existing logic)
                     target_pod = None
                     for pod in pods.items:
-                        if pod_pattern in pod.metadata.name and pod.status.phase == 'Running':
-                            target_pod = pod
-                            break
+                        # For bot pods, match exact name; for others, use pattern matching
+                        if is_bot_pod:
+                            if pod.metadata.name == pod_pattern:
+                                target_pod = pod
+                                break
+                        else:
+                            if pod_pattern in pod.metadata.name and pod.status.phase == 'Running':
+                                target_pod = pod
+                                break
 
                     if not target_pod:
-                        yield f"data: {json_module.dumps({'error': f'No running pod found matching: {pod_pattern}'})}\n\n"
+                        yield f"data: {json_module.dumps({'error': f'No pod found matching: {pod_pattern}'})}\n\n"
                         return
 
                     # Stream logs from the pod
                     pod_name = target_pod.metadata.name
                     container_name = target_pod.spec.containers[0].name if target_pod.spec.containers else None
 
-                    # Use watch to stream logs
+                    # For non-running pods, get recent logs without follow
+                    if target_pod.status.phase != 'Running':
+                        try:
+                            logs = v1.read_namespaced_pod_log(
+                                name=pod_name,
+                                namespace=namespace,
+                                container=container_name,
+                                tail_lines=200,
+                                timestamps=True,
+                            )
+                            for line in logs.split('\n'):
+                                if not line or not level_matches(line, level):
+                                    continue
+                                timestamp, log_level, message = parse_log_line(line)
+                                data = json_module.dumps({
+                                    'time': timestamp,
+                                    'level': log_level,
+                                    'message': message,
+                                    'pod': pod_name,
+                                })
+                                yield f"data: {data}\n\n"
+                            yield f"data: {json_module.dumps({'message': f'[End of logs - pod status: {target_pod.status.phase}]', 'level': 'INFO', 'time': ''})}\n\n"
+                        except Exception as e:
+                            yield f"data: {json_module.dumps({'error': f'Failed to get logs: {e}'})}\n\n"
+                        return
+
+                    # Use watch to stream logs for running pods
                     from kubernetes import watch
                     w = watch.Watch()
 

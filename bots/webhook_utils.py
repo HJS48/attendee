@@ -17,6 +17,7 @@ def trigger_webhook(webhook_trigger_type, bot=None, calendar=None, zoom_oauth_co
     Prioritizes bot-level webhook subscriptions over project-level ones.
     """
     from bots.models import WebhookDeliveryAttempt
+    from bots.task_executor import is_kubernetes_mode, task_executor
 
     if bot:
         project = bot.project
@@ -55,9 +56,13 @@ def trigger_webhook(webhook_trigger_type, bot=None, calendar=None, zoom_oauth_co
         )
         delivery_attempts.append(delivery_attempt)
 
-        from bots.tasks.deliver_webhook_task import deliver_webhook
-
-        transaction.on_commit(partial(deliver_webhook.delay, delivery_attempt.id))
+        if is_kubernetes_mode():
+            # In K8s mode, use task executor instead of Celery
+            from bots.tasks.deliver_webhook_task import deliver_webhook_sync
+            transaction.on_commit(partial(task_executor.submit, deliver_webhook_sync, delivery_attempt.id))
+        else:
+            from bots.tasks.deliver_webhook_task import deliver_webhook
+            transaction.on_commit(partial(deliver_webhook.delay, delivery_attempt.id))
 
     return len(delivery_attempts)
 

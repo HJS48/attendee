@@ -11,7 +11,7 @@ from django.utils import timezone
 from accounts.models import Organization
 from bots.models import Bot, BotStates, Calendar, CalendarStates, ZoomOAuthConnection, ZoomOAuthConnectionStates
 from bots.tasks.autopay_charge_task import enqueue_autopay_charge_task
-from bots.tasks.launch_scheduled_bot_task import launch_scheduled_bot
+from bots.tasks.launch_scheduled_bot_task import launch_scheduled_bot_sync
 from bots.tasks.refresh_zoom_oauth_connection_task import enqueue_refresh_zoom_oauth_connection_task
 from bots.tasks.sync_calendar_task import enqueue_sync_calendar_task
 from bots.tasks.sync_zoom_oauth_connection_task import enqueue_sync_zoom_oauth_connection_task
@@ -167,7 +167,7 @@ class Command(BaseCommand):
 
             for bot in bots_to_launch:
                 log.info(f"Launching scheduled bot {bot.id} ({bot.object_id}) with join_at {bot.join_at.isoformat()}")
-                launch_scheduled_bot.delay(bot.id, bot.join_at.isoformat())
+                launch_scheduled_bot_sync(bot.id, bot.join_at.isoformat())
 
             log.info("Launched %s bots", len(bots_to_launch))
 

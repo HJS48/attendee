@@ -212,10 +212,13 @@ class BotPodCreator:
 
         args = ["python", "manage.py", "run_bot", "--botid", str(self.bot_id)]
 
+        # Use Never for local k3s deployments (image imported via k3s ctr)
+        image_pull_policy = os.getenv("BOT_POD_IMAGE_PULL_POLICY", "Never")
+
         return client.V1Container(
                         name="bot-proc",
                         image=self.image,
-                        image_pull_policy="Always",
+                        image_pull_policy=image_pull_policy,
                         args=args,
                         resources=client.V1ResourceRequirements(
                             requests={

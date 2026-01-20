@@ -100,13 +100,53 @@ def sync_bots_for_calendar_event(calendar_event: CalendarEvent):
         sync_bot_with_calendar_event(bot, calendar_event)
 
 
+def sync_calendar_sync(calendar_id, retry_count=0):
+    """
+    Synchronous version of sync_calendar for direct execution without Celery.
+    Used in Kubernetes mode where Celery worker is not available.
+    Implements retry logic with exponential backoff.
+    """
+    import time
+
+    SYNC_MAX_RETRIES = 6
+    SYNC_RETRY_BACKOFF_BASE = 2
+
+    logger.info(f"Syncing calendar {calendar_id} (sync)")
+    calendar = Calendar.objects.get(id=calendar_id)
+    if calendar.platform == CalendarPlatform.GOOGLE:
+        sync_handler = GoogleCalendarSyncHandler(calendar_id)
+    elif calendar.platform == CalendarPlatform.MICROSOFT:
+        sync_handler = MicrosoftCalendarSyncHandler(calendar_id)
+    else:
+        raise ValueError(f"Unsupported calendar platform: {calendar.platform}")
+
+    try:
+        return sync_handler.sync_events()
+    except Exception as e:
+        if retry_count < SYNC_MAX_RETRIES:
+            backoff_time = SYNC_RETRY_BACKOFF_BASE ** (retry_count + 1)
+            logger.info(f"Retrying calendar sync {calendar_id} (attempt {retry_count + 1}/{SYNC_MAX_RETRIES}) in {backoff_time}s: {e}")
+            time.sleep(backoff_time)
+            return sync_calendar_sync(calendar_id, retry_count + 1)
+        else:
+            logger.error(f"Calendar sync {calendar_id} failed after max retries: {e}")
+            raise
+
+
 def enqueue_sync_calendar_task(calendar: Calendar):
     """Enqueue a sync calendar task for a calendar."""
+    from bots.task_executor import is_kubernetes_mode, task_executor
+
     with transaction.atomic():
         calendar.sync_task_enqueued_at = timezone.now()
         calendar.sync_task_requested_at = None
         calendar.save()
-        sync_calendar.delay(calendar.id)
+
+        if is_kubernetes_mode():
+            # In K8s mode, use task executor instead of Celery
+            task_executor.submit(sync_calendar_sync, calendar.id)
+        else:
+            sync_calendar.delay(calendar.id)
 
 
 @shared_task(

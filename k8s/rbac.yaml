@@ -24,6 +24,10 @@ rules:
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["get", "list", "watch"]
+# For dashboard health monitoring
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
 ---
 # Bind the role to the service account
 apiVersion: rbac.authorization.k8s.io/v1
@@ -70,4 +74,38 @@ subjects:
 roleRef:
   kind: Role
   name: webpage-streamer-pod-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole for viewing cluster-scoped resources (nodes, metrics, dashboard)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: attendee-cluster-viewer
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["nodes", "pods"]
+  verbs: ["get", "list"]
+# Dashboard permissions - view deployments and events across namespaces
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events", "pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+---
+# Bind ClusterRole to service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: attendee-cluster-viewer-binding
+subjects:
+- kind: ServiceAccount
+  name: attendee-bot-creator
+  namespace: attendee
+roleRef:
+  kind: ClusterRole
+  name: attendee-cluster-viewer
   apiGroup: rbac.authorization.k8s.io

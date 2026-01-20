@@ -1,0 +1,35 @@
+# Traefik IngressRoute for wayfarrow.info
+# Routes external traffic to the attendee-api service
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: wayfarrow-dashboard
+  namespace: attendee
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`wayfarrow.info`) && PathPrefix(`/dashboard`)
+      kind: Rule
+      services:
+        - name: attendee-api
+          port: 8000
+  tls:
+    certResolver: default
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: wayfarrow-default
+  namespace: attendee
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`wayfarrow.info`)
+      kind: Rule
+      services:
+        - name: attendee-api
+          port: 8000
+  tls:
+    certResolver: default

@@ -664,6 +664,25 @@
                         <tbody id="k8s-issues-body"></tbody>
                     </table>
                 </div>
+
+                <!-- Deployments Status -->
+                <div id="k8s-deployments-container" style="margin-top: 16px;">
+                    <h3 style="font-size: 14px; color: #666; margin-bottom: 8px;">Deployments</h3>
+                    <div id="k8s-deployments-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- K8s Events (Warnings) -->
+                <div id="k8s-events-container" style="margin-top: 16px; display: none;">
+                    <h3 style="font-size: 14px; color: #666; margin-bottom: 8px;">
+                        Recent Events
+                        <span id="k8s-events-warning-count" style="color: #f59e0b; font-size: 12px;"></span>
+                    </h3>
+                    <div id="k8s-events-list" style="max-height: 200px; overflow-y: auto; font-size: 12px;">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
             </div>
 
             <!-- Celery Queue (shown in both modes) -->
@@ -1003,7 +1022,12 @@
                 modeBadge.className = `badge ${mode === 'kubernetes' ? 'badge-info' : 'badge-secondary'}`;
 
                 // Update log source options based on mode
-                updateLogSourceOptions(mode);
+                await updateLogSourceOptions(mode);
+
+                // Start bot pods refresh in k8s mode
+                if (mode === 'kubernetes') {
+                    startBotPodsRefresh();
+                }
 
                 // Toggle sections based on mode
                 const dockerSection = document.getElementById('docker-section');
@@ -1018,9 +1042,11 @@
                     // Update K8s stats
                     updateK8sStats(data.kubernetes);
 
-                    // Load K8s alerts and pods
+                    // Load K8s alerts, pods, deployments, and events
                     loadK8sAlerts();
                     loadK8sPods();
+                    loadK8sDeployments();
+                    loadK8sEvents();
                 } else {
                     dockerSection.classList.remove('hidden');
                     k8sSection.classList.remove('visible');
@@ -1240,6 +1266,86 @@
             }
         }
 
+        async function loadK8sDeployments() {
+            try {
+                const data = await fetch('/dashboard/api/k8s/deployments/').then(r => r.json());
+                if (data.error) {
+                    console.error('K8s deployments error:', data.error);
+                    return;
+                }
+
+                const grid = document.getElementById('k8s-deployments-grid');
+                if (!data.deployments || data.deployments.length === 0) {
+                    grid.innerHTML = '<div style="color: #666; font-size: 12px;">No deployments found</div>';
+                    return;
+                }
+
+                grid.innerHTML = data.deployments.map(dep => {
+                    const healthClass = dep.health === 'healthy' ? 'healthy' : dep.health === 'degraded' ? 'warning' : 'error';
+                    const statusIcon = dep.health === 'healthy' ? '✓' : dep.health === 'degraded' ? '⚠' : '✗';
+                    return `
+                        <div class="k8s-stat ${healthClass}" style="padding: 12px; border-radius: 8px; background: ${dep.health === 'healthy' ? '#f0fdf4' : dep.health === 'degraded' ? '#fef9c3' : '#fef2f2'};">
+                            <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">${statusIcon} ${escapeHtml(dep.name)}</div>
+                            <div style="font-size: 11px; color: #666;">
+                                <span>${dep.replicas.ready}/${dep.replicas.desired} ready</span>
+                                ${dep.progressing === false ? '<span style="color: #f59e0b;"> (stalled)</span>' : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load K8s deployments:', error);
+            }
+        }
+
+        async function loadK8sEvents() {
+            try {
+                const data = await fetch('/dashboard/api/k8s/events/').then(r => r.json());
+                if (data.error) {
+                    console.error('K8s events error:', data.error);
+                    return;
+                }
+
+                const container = document.getElementById('k8s-events-container');
+                const list = document.getElementById('k8s-events-list');
+                const warningCount = document.getElementById('k8s-events-warning-count');
+
+                const warnings = data.warnings || [];
+                if (warnings.length === 0) {
+                    container.style.display = 'none';
+                    return;
+                }
+
+                container.style.display = 'block';
+                warningCount.textContent = `(${warnings.length} warnings)`;
+
+                list.innerHTML = warnings.slice(0, 20).map(evt => {
+                    const ageStr = evt.age_seconds
+                        ? evt.age_seconds < 60 ? `${evt.age_seconds}s ago`
+                        : evt.age_seconds < 3600 ? `${Math.floor(evt.age_seconds / 60)}m ago`
+                        : `${Math.floor(evt.age_seconds / 3600)}h ago`
+                        : '';
+                    const typeClass = evt.type === 'Warning' ? 'color: #f59e0b;' : 'color: #666;';
+                    return `
+                        <div style="padding: 6px 0; border-bottom: 1px solid #eee; ${typeClass}">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <strong>${escapeHtml(evt.reason)}</strong>
+                                    <code style="font-size: 10px; margin-left: 8px;">${escapeHtml(evt.object)}</code>
+                                </div>
+                                <span style="font-size: 10px; color: #999; white-space: nowrap;">${ageStr}${evt.count > 1 ? ` (x${evt.count})` : ''}</span>
+                            </div>
+                            <div style="font-size: 11px; color: #666; margin-top: 2px;">${escapeHtml(evt.message.substring(0, 150))}${evt.message.length > 150 ? '...' : ''}</div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load K8s events:', error);
+            }
+        }
+
         async function doK8sLookup() {
             const input = document.getElementById('k8s-lookup-input').value.trim();
             if (!input) return;
@@ -1327,18 +1433,60 @@
         let autoScroll = true;
         const MAX_LOG_LINES = 500;
 
-        function updateLogSourceOptions(mode) {
+        // Cache for bot pods
+        let cachedBotPods = [];
+
+        async function fetchBotPods() {
+            try {
+                const response = await fetch('/dashboard/api/kubernetes/pods');
+                if (!response.ok) return [];
+                const data = await response.json();
+                // Include all bot pods (Running, Error, Completed) for visibility
+                return (data.pods || []).filter(p =>
+                    p.name.startsWith('bot-') || p.name.startsWith('bot-pod-')
+                ).sort((a, b) => {
+                    // Sort: Running first, then by name
+                    if (a.phase === 'Running' && b.phase !== 'Running') return -1;
+                    if (a.phase !== 'Running' && b.phase === 'Running') return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            } catch (e) {
+                console.error('Failed to fetch bot pods:', e);
+                return [];
+            }
+        }
+
+        async function updateLogSourceOptions(mode) {
             const logSource = document.getElementById('log-source');
             const currentValue = logSource.value;
 
             if (mode === 'kubernetes') {
-                logSource.innerHTML = `
+                // Fetch all bot pods (including non-running for error visibility)
+                cachedBotPods = await fetchBotPods();
+
+                let options = `
+                    <option value="all-bots">All Bot Pods (aggregated)</option>
                     <option value="scheduler">scheduler (k8s)</option>
                     <option value="app">api (k8s)</option>
                 `;
-                // Set to scheduler if worker was selected (worker doesn't exist in k8s)
-                if (currentValue === 'worker') {
-                    logSource.value = 'scheduler';
+
+                // Add individual bot pod options
+                if (cachedBotPods.length > 0) {
+                    options += `<optgroup label="Bot Pods (${cachedBotPods.length})">`;
+                    for (const pod of cachedBotPods) {
+                        const status = pod.phase !== 'Running' ? ` [${pod.phase}]` : '';
+                        options += `<option value="${pod.name}">${pod.name}${status}</option>`;
+                    }
+                    options += `</optgroup>`;
+                }
+
+                logSource.innerHTML = options;
+
+                // Set to scheduler if current value doesn't exist in k8s options (e.g., worker)
+                if (currentValue && logSource.querySelector(`option[value="${currentValue}"]`)) {
+                    logSource.value = currentValue;
+                } else {
+                    logSource.value = 'scheduler';  // Default to scheduler in k8s mode
                 }
             } else {
                 logSource.innerHTML = `
@@ -1347,6 +1495,21 @@
                     <option value="app">app</option>
                 `;
             }
+        }
+
+        // Refresh bot pods list periodically in k8s mode
+        function startBotPodsRefresh() {
+            setInterval(async () => {
+                const mode = document.body.dataset.infraMode;
+                if (mode === 'kubernetes') {
+                    const logSource = document.getElementById('log-source');
+                    const currentValue = logSource.value;
+                    // Only refresh if not currently viewing a bot pod
+                    if (!currentValue.startsWith('bot-')) {
+                        await updateLogSourceOptions('kubernetes');
+                    }
+                }
+            }, 30000); // Refresh every 30 seconds
         }
 
         function initLogStream() {
