@@ -87,12 +87,16 @@ class TaskExecutor:
     def submit(self, func: Callable, *args, **kwargs) -> None:
         """Submit a task for immediate execution."""
         def wrapped_task():
+            from django.db import close_old_connections
             try:
-                logger.debug(f"Executing task: {func.__name__}")
+                close_old_connections()  # Ensure fresh DB connection for thread
+                logger.info(f"Executing task: {func.__name__}")
                 func(*args, **kwargs)
-                logger.debug(f"Task completed: {func.__name__}")
+                logger.info(f"Task completed: {func.__name__}")
             except Exception as e:
                 logger.exception(f"Task failed: {func.__name__}: {e}")
+            finally:
+                close_old_connections()  # Clean up connection after task
 
         self._executor.submit(wrapped_task)
 
