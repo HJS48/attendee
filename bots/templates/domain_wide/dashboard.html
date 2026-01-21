@@ -532,8 +532,11 @@
         <!-- Recent Failures -->
         <div class="card">
             <div class="card-header">
-                <h2>Recent Failures (Last 7 Days)</h2>
-                <span class="count-badge" id="failure-count">0 failures</span>
+                <h2>Recent Failures</h2>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="date" id="failure-date-picker" onchange="loadFailures()">
+                    <span class="count-badge" id="failure-count">0 failures</span>
+                </div>
             </div>
 
             <!-- Failure breakdown by reason -->
@@ -762,8 +765,9 @@
     </div>
 
     <script>
-        // Set default date to today
+        // Set default date to today for both date pickers
         document.getElementById('date-picker').valueAsDate = new Date();
+        document.getElementById('failure-date-picker').valueAsDate = new Date();
 
         async function loadData() {
             await Promise.all([loadSummary(), loadDateData(), loadFailures(), loadCalendarSync(), loadInfrastructure()]);
@@ -871,22 +875,51 @@
             }
         }
 
-        // Unique colors for failure reasons
+        // Unique colors for all failure reasons - each error type gets a distinct color
         const failureReasonColors = {
-            'Request Denied': { bg: '#fee2e2', border: '#ef4444', text: '#dc2626' },
-            'Waiting Room Timeout': { bg: '#fef3c7', border: '#f59e0b', text: '#d97706' },
-            'Not Found': { bg: '#dbeafe', border: '#3b82f6', text: '#2563eb' },
-            'Invalid URL': { bg: '#e0e7ff', border: '#6366f1', text: '#4f46e5' },
-            'Requires Sign In': { bg: '#fce7f3', border: '#ec4899', text: '#db2777' },
-            'Requires Passcode': { bg: '#f3e8ff', border: '#a855f7', text: '#9333ea' },
-            'Room Full': { bg: '#ffedd5', border: '#f97316', text: '#ea580c' },
-            'Not Started': { bg: '#d1fae5', border: '#10b981', text: '#059669' },
-            'Has Ended': { bg: '#e5e7eb', border: '#6b7280', text: '#4b5563' },
-            'Account Not Found': { bg: '#fef9c3', border: '#eab308', text: '#ca8a04' },
-            'Generic Error': { bg: '#f1f5f9', border: '#64748b', text: '#475569' },
-            'Heartbeat Timeout': { bg: '#fecaca', border: '#f87171', text: '#dc2626' },
+            // Join issues (blues/purples)
+            'Waiting for Host': { bg: '#dbeafe', border: '#3b82f6', text: '#1d4ed8' },
+            'Meeting Not Found': { bg: '#c7d2fe', border: '#6366f1', text: '#4338ca' },
+            'Waiting Room Timeout': { bg: '#e0e7ff', border: '#818cf8', text: '#5b21b6' },
+            'Join Denied': { bg: '#ede9fe', border: '#a78bfa', text: '#6d28d9' },
+            'Connection Failed': { bg: '#f3e8ff', border: '#c084fc', text: '#7e22ce' },
+            'Blocked by Captcha': { bg: '#fae8ff', border: '#e879f9', text: '#a21caf' },
+
+            // Auth issues (pinks/magentas)
+            'Login Required': { bg: '#fce7f3', border: '#f472b6', text: '#be185d' },
+            'Login Failed': { bg: '#ffe4e6', border: '#fb7185', text: '#be123c' },
+            'Auth User Not In Meeting': { bg: '#fecdd3', border: '#f43f5e', text: '#9f1239' },
+
+            // Zoom-specific (oranges/ambers)
+            'Zoom Auth Failed': { bg: '#ffedd5', border: '#fb923c', text: '#c2410c' },
+            'Zoom Status Failed': { bg: '#fef3c7', border: '#fbbf24', text: '#b45309' },
+            'Zoom SDK Error': { bg: '#fef9c3', border: '#facc15', text: '#a16207' },
+            'Unpublished Zoom App': { bg: '#fefce8', border: '#eab308', text: '#854d0e' },
+
+            // System/Infrastructure (grays/slates)
+            'Process Terminated': { bg: '#f1f5f9', border: '#94a3b8', text: '#475569' },
+            'Heartbeat Timeout': { bg: '#e2e8f0', border: '#64748b', text: '#334155' },
+            'Bot Not Launched': { bg: '#cbd5e1', border: '#475569', text: '#1e293b' },
+            'Internal Error': { bg: '#d1d5db', border: '#6b7280', text: '#374151' },
+            'UI Element Not Found': { bg: '#e5e7eb', border: '#9ca3af', text: '#4b5563' },
+            'RTMP Connection Failed': { bg: '#f3f4f6', border: '#d1d5db', text: '#6b7280' },
+
+            // Recording issues (teals/cyans)
+            'Recording Denied': { bg: '#ccfbf1', border: '#2dd4bf', text: '#0f766e' },
+            'Recording Request Timeout': { bg: '#cffafe', border: '#22d3ee', text: '#0e7490' },
+            'Cannot Grant Permission': { bg: '#a5f3fc', border: '#06b6d4', text: '#0891b2' },
+
+            // User-initiated/Auto leaves (greens)
+            'User Requested Leave': { bg: '#d1fae5', border: '#34d399', text: '#047857' },
+            'Auto Leave (Silence)': { bg: '#dcfce7', border: '#4ade80', text: '#15803d' },
+            'Auto Leave (Alone)': { bg: '#bbf7d0', border: '#22c55e', text: '#166534' },
+            'Max Uptime Exceeded': { bg: '#86efac', border: '#16a34a', text: '#14532d' },
+            'Closed Captions Failed': { bg: '#a7f3d0', border: '#10b981', text: '#065f46' },
+
+            // Credit/Payment (reds)
+            'Out of Credits': { bg: '#fee2e2', border: '#f87171', text: '#b91c1c' },
         };
-        const defaultFailureColor = { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
+        const defaultFailureColor = { bg: '#f5f5f5', border: '#a0a0a0', text: '#525252' };
 
         function getFailureColor(reason) {
             return failureReasonColors[reason] || defaultFailureColor;
@@ -894,7 +927,11 @@
 
         async function loadFailures() {
             try {
-                const data = await fetch('/dashboard/api/failures/').then(r => r.json());
+                const failureDate = document.getElementById('failure-date-picker').value;
+                const url = failureDate
+                    ? `/dashboard/api/failures/?date=${failureDate}`
+                    : '/dashboard/api/failures/?days=1';
+                const data = await fetch(url).then(r => r.json());
 
                 // Update total count
                 document.getElementById('failure-count').textContent = `${data.total} failures`;
@@ -903,7 +940,7 @@
                 const summaryDiv = document.getElementById('failure-summary');
                 const summaryEntries = Object.entries(data.summary || {});
                 if (summaryEntries.length === 0) {
-                    summaryDiv.innerHTML = '<span style="color:#888;font-size:13px;">No failures</span>';
+                    summaryDiv.innerHTML = '<span style="color:#888;font-size:13px;">No failures for this day</span>';
                 } else {
                     summaryDiv.innerHTML = summaryEntries
                         .sort((a, b) => b[1] - a[1])
@@ -913,23 +950,23 @@
                             <div class="pipeline-col">
                                 <h3><span class="badge" style="background:${color.bg}; color:${color.text}; border: 1px solid ${color.border};">${escapeHtml(reason)}</span></h3>
                                 <div class="metric-row">
-                                    <span class="metric-value metric-error">${count}</span>
+                                    <span class="metric-value">${count}</span>
                                 </div>
                             </div>
                         `}).join('');
                 }
 
-                // Render table with new columns
+                // Render table
                 const failuresBody = document.getElementById('failures-body');
                 if (data.failures.length === 0) {
-                    failuresBody.innerHTML = '<tr><td colspan="5">No failures in the last 7 days</td></tr>';
+                    failuresBody.innerHTML = '<tr><td colspan="5">No failures for this day</td></tr>';
                 } else {
-                    failuresBody.innerHTML = data.failures.slice(0, 20).map(f => {
+                    failuresBody.innerHTML = data.failures.map(f => {
                         const color = getFailureColor(f.reason);
                         return `
                         <tr>
                             <td><code>${f.bot_id.substring(0, 8)}...</code></td>
-                            <td><span class="badge ${f.event_type_label === 'Fatal Error' ? 'badge-error' : 'badge-warning'}">${escapeHtml(f.event_type_label)}</span></td>
+                            <td><span class="badge badge-secondary">${escapeHtml(f.event_type_label)}</span></td>
                             <td><span class="badge" style="background:${color.bg}; color:${color.text}; border: 1px solid ${color.border};">${escapeHtml(f.reason)}</span></td>
                             <td class="url-cell" title="${escapeHtml(f.meeting_url)}">${f.meeting_url || '-'}</td>
                             <td>${new Date(f.timestamp).toLocaleString()}</td>

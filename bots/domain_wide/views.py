@@ -104,27 +104,53 @@ class RecentFailuresAPI(View):
     def get(self, request):
         from collections import Counter
 
-        days = int(request.GET.get('days', 7))
-        cutoff = timezone.now() - timedelta(days=days)
+        # Support filtering by specific date (using bot's scheduled join_at date)
+        date_str = request.GET.get('date')
+        if date_str:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            # Filter by the bot's scheduled meeting date, not when the error was recorded
+            failures = BotEvent.objects.filter(
+                event_type__in=[BotEventTypes.FATAL_ERROR, BotEventTypes.COULD_NOT_JOIN],
+                bot__join_at__date=target_date
+            ).select_related('bot').order_by('-bot__join_at')[:100]
+        else:
+            days = int(request.GET.get('days', 7))
+            cutoff = timezone.now() - timedelta(days=days)
+            failures = BotEvent.objects.filter(
+                event_type__in=[BotEventTypes.FATAL_ERROR, BotEventTypes.COULD_NOT_JOIN],
+                bot__join_at__gte=cutoff
+            ).select_related('bot').order_by('-bot__join_at')[:100]
 
-        failures = BotEvent.objects.filter(
-            event_type__in=[BotEventTypes.FATAL_ERROR, BotEventTypes.COULD_NOT_JOIN],
-            created_at__gte=cutoff
-        ).select_related('bot').order_by('-created_at')[:50]
-
+        # Map all BotEventSubTypes to short, readable labels for the dashboard
         sub_type_names = {
-            1: 'Room Full',
-            2: 'Not Started',
-            3: 'Has Ended',
-            4: 'Invalid URL',
-            5: 'Not Found',
-            6: 'Requires Sign In',
-            7: 'Requires Passcode',
-            8: 'Account Not Found',
-            9: 'Request Denied',
-            10: 'Generic Error',
-            11: 'Waiting Room Timeout',
-            12: 'Heartbeat Timeout',
+            1: 'Waiting for Host',
+            2: 'Process Terminated',
+            3: 'Zoom Auth Failed',
+            4: 'Zoom Status Failed',
+            5: 'Unpublished Zoom App',
+            6: 'RTMP Connection Failed',
+            7: 'Zoom SDK Error',
+            8: 'UI Element Not Found',
+            9: 'Join Denied',
+            10: 'User Requested Leave',
+            11: 'Auto Leave (Silence)',
+            12: 'Auto Leave (Alone)',
+            13: 'Heartbeat Timeout',
+            14: 'Meeting Not Found',
+            15: 'Bot Not Launched',
+            16: 'Waiting Room Timeout',
+            17: 'Max Uptime Exceeded',
+            18: 'Login Required',
+            19: 'Login Failed',
+            20: 'Out of Credits',
+            21: 'Connection Failed',
+            22: 'Internal Error',
+            23: 'Recording Denied',
+            24: 'Recording Request Timeout',
+            25: 'Cannot Grant Permission',
+            26: 'Closed Captions Failed',
+            27: 'Auth User Not In Meeting',
+            28: 'Blocked by Captcha',
         }
 
         subtype_counts = Counter()
@@ -143,7 +169,7 @@ class RecentFailuresAPI(View):
                 'event_type_label': event_type_label,
                 'event_sub_type': f.event_sub_type,
                 'reason': reason,
-                'timestamp': f.created_at.isoformat(),
+                'timestamp': f.bot.join_at.isoformat() if f.bot.join_at else f.created_at.isoformat(),
             })
 
         return JsonResponse({

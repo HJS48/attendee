@@ -188,6 +188,10 @@ REST_FRAMEWORK = {
 }
 
 DISABLE_RATE_LIMITING = os.getenv("DISABLE_RATE_LIMITING", "false") == "true"
+
+# Max concurrent bots to prevent resource exhaustion (default: 3 based on typical node capacity)
+MAX_CONCURRENT_BOTS = int(os.getenv("MAX_CONCURRENT_BOTS", "3"))
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "Attendee API",
     "DESCRIPTION": "Meetings bots made easy",

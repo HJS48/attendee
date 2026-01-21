@@ -149,12 +149,43 @@ class Command(BaseCommand):
         log.info("Launched %d zoom oauth connection sync tasks", len(zoom_oauth_connections))
 
     # -----------------------------------------------------------
+    def _get_active_bot_count(self):
+        """Count bots currently in active states (consuming resources)."""
+        active_states = [
+            BotStates.JOINING,
+            BotStates.JOINED_NOT_RECORDING,
+            BotStates.JOINED_RECORDING,
+            BotStates.JOINED_RECORDING_PAUSED,
+            BotStates.JOINED_RECORDING_PERMISSION_DENIED,
+            BotStates.WAITING_ROOM,
+            BotStates.POST_PROCESSING,
+            BotStates.LEAVING,
+            BotStates.JOINING_BREAKOUT_ROOM,
+            BotStates.LEAVING_BREAKOUT_ROOM,
+            BotStates.CONNECTING,
+            BotStates.CONNECTED,
+            BotStates.DISCONNECTING,
+        ]
+        return Bot.objects.filter(state__in=active_states).count()
+
     def _run_scheduled_bots(self):
         """
         Promote objects whose join_at ≤ join_at_threshold.
         Uses SELECT … FOR UPDATE SKIP LOCKED so multiple daemons
         can run safely (e.g. during rolling deploys).
+
+        Respects MAX_CONCURRENT_BOTS setting to prevent resource exhaustion.
         """
+        # Max concurrent bots limit - default 3 based on typical node capacity
+        max_concurrent = getattr(settings, 'MAX_CONCURRENT_BOTS', 3)
+
+        # Check current active bot count
+        active_count = self._get_active_bot_count()
+        available_slots = max(0, max_concurrent - active_count)
+
+        if available_slots == 0:
+            log.info(f"At capacity: {active_count}/{max_concurrent} bots active. Waiting for slots to free up.")
+            return
 
         # Give the bots 5 minutes to spin up, before they join the meeting.
         join_at_upper_threshold = timezone.now() + timezone.timedelta(minutes=5)
@@ -163,13 +194,24 @@ class Command(BaseCommand):
         join_at_lower_threshold = timezone.now() - timezone.timedelta(minutes=5)
 
         with transaction.atomic():
-            bots_to_launch = Bot.objects.filter(state=BotStates.SCHEDULED, join_at__lte=join_at_upper_threshold, join_at__gte=join_at_lower_threshold).select_for_update(skip_locked=True)
+            # Only fetch as many bots as we have slots for, ordered by join_at (earliest first)
+            bots_to_launch = Bot.objects.filter(
+                state=BotStates.SCHEDULED,
+                join_at__lte=join_at_upper_threshold,
+                join_at__gte=join_at_lower_threshold
+            ).select_for_update(skip_locked=True).order_by('join_at')[:available_slots]
 
+            launched_count = 0
             for bot in bots_to_launch:
                 log.info(f"Launching scheduled bot {bot.id} ({bot.object_id}) with join_at {bot.join_at.isoformat()}")
                 launch_scheduled_bot_sync(bot.id, bot.join_at.isoformat())
+                launched_count += 1
 
-            log.info("Launched %s bots", len(bots_to_launch))
+            if launched_count < len(list(Bot.objects.filter(state=BotStates.SCHEDULED, join_at__lte=join_at_upper_threshold, join_at__gte=join_at_lower_threshold))):
+                pending_count = Bot.objects.filter(state=BotStates.SCHEDULED, join_at__lte=join_at_upper_threshold, join_at__gte=join_at_lower_threshold).count() - launched_count
+                log.warning(f"Capacity limited: launched {launched_count} bots, {pending_count} still waiting in queue")
+
+            log.info(f"Launched {launched_count} bots ({active_count + launched_count}/{max_concurrent} now active)")
 
     def _run_autopay_tasks(self):
         """
