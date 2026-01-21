@@ -375,7 +375,134 @@
             font-size: 12px;
             border-bottom: 1px solid #eee;
         }
+
+        /* Resource Usage Section */
+        .resource-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .resource-controls select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .bot-resource-table tbody tr {
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .bot-resource-table tbody tr:hover {
+            background: #f0f7ff;
+        }
+        .resource-bar-inline {
+            display: inline-block;
+            width: 80px;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        .resource-bar-inline .fill {
+            height: 100%;
+            border-radius: 4px;
+        }
+        .resource-bar-inline .fill.low { background: #10b981; }
+        .resource-bar-inline .fill.medium { background: #f59e0b; }
+        .resource-bar-inline .fill.high { background: #ef4444; }
+
+        /* Bot Detail Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            transform: translateY(20px);
+            transition: transform 0.2s ease;
+        }
+        .modal-overlay.visible .modal-content {
+            transform: translateY(0);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .modal-header h3 {
+            font-size: 16px;
+            color: #333;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            line-height: 1;
+        }
+        .modal-close:hover { color: #333; }
+        .modal-body {
+            padding: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 250px;
+            margin-bottom: 20px;
+        }
+        .bot-info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .bot-info-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .bot-info-item .value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+        .bot-info-item .label {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .bot-info-item.warning .value { color: #f59e0b; }
+        .bot-info-item.error .value { color: #ef4444; }
     </style>
+    <!-- Chart.js for resource graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -576,6 +703,79 @@
             </table>
         </div>
 
+        <!-- Resource Usage -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Resource Usage</h2>
+                <div class="resource-controls">
+                    <select id="resource-time-range" onchange="loadResourceSummary()">
+                        <option value="1">Last 1 hour</option>
+                        <option value="6">Last 6 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                    </select>
+                    <span class="count-badge" id="resource-bot-count">0 bots</span>
+                </div>
+            </div>
+            <div id="resource-no-data" style="display: none; padding: 20px; text-align: center; color: #888;">
+                <p>No resource data available. Resource snapshots may be disabled.</p>
+                <p style="font-size: 12px; margin-top: 8px;">Enable with: <code>SAVE_BOT_RESOURCE_SNAPSHOTS=true</code></p>
+            </div>
+            <table class="bot-resource-table" id="resource-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Bot ID</th>
+                        <th>Status</th>
+                        <th>Peak Memory</th>
+                        <th>Peak CPU</th>
+                        <th>Memory Limit</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody id="resource-body">
+                    <tr><td colspan="6" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Bot Resource Detail Modal -->
+        <div class="modal-overlay" id="bot-resource-modal" onclick="closeBotModal(event)">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>Bot Resource Details: <code id="modal-bot-id">--</code></h3>
+                    <button class="modal-close" onclick="closeBotModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="bot-info-grid" id="modal-info-grid">
+                        <div class="bot-info-item">
+                            <div class="value" id="modal-peak-mem">--</div>
+                            <div class="label">Peak Memory</div>
+                        </div>
+                        <div class="bot-info-item">
+                            <div class="value" id="modal-peak-cpu">--</div>
+                            <div class="label">Peak CPU</div>
+                        </div>
+                        <div class="bot-info-item">
+                            <div class="value" id="modal-mem-limit">--</div>
+                            <div class="label">Memory Limit</div>
+                        </div>
+                        <div class="bot-info-item" id="modal-oom-item">
+                            <div class="value" id="modal-oom">--</div>
+                            <div class="label">OOM Risk</div>
+                        </div>
+                    </div>
+                    <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">Memory Usage Over Time</h4>
+                    <div class="chart-container">
+                        <canvas id="memory-chart"></canvas>
+                    </div>
+                    <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">CPU Usage Over Time</h4>
+                    <div class="chart-container">
+                        <canvas id="cpu-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Infrastructure Status -->
         <div class="card">
             <div class="card-header">
@@ -770,7 +970,7 @@
         document.getElementById('failure-date-picker').valueAsDate = new Date();
 
         async function loadData() {
-            await Promise.all([loadSummary(), loadDateData(), loadFailures(), loadCalendarSync(), loadInfrastructure()]);
+            await Promise.all([loadSummary(), loadDateData(), loadFailures(), loadCalendarSync(), loadResourceSummary(), loadInfrastructure()]);
         }
 
         async function loadSummary() {
@@ -1043,6 +1243,231 @@
                 console.error('Failed to load calendar sync:', error);
             }
         }
+
+        // Resource Usage
+        let memoryChart = null;
+        let cpuChart = null;
+
+        async function loadResourceSummary() {
+            const hours = document.getElementById('resource-time-range').value;
+
+            try {
+                const data = await fetch(`/dashboard/api/resources/summary/?hours=${hours}`).then(r => r.json());
+
+                const table = document.getElementById('resource-table');
+                const noData = document.getElementById('resource-no-data');
+                const tbody = document.getElementById('resource-body');
+
+                if (!data.bots || data.bots.length === 0) {
+                    table.style.display = 'none';
+                    noData.style.display = 'block';
+                    document.getElementById('resource-bot-count').textContent = '0 bots';
+                    return;
+                }
+
+                table.style.display = 'table';
+                noData.style.display = 'none';
+                document.getElementById('resource-bot-count').textContent = `${data.bots.length} bots`;
+
+                // Get limits from top-level
+                const memLimit = data.limits?.memory_mb || 3072;
+                const cpuLimit = data.limits?.cpu_millicores || 1500;
+
+                tbody.innerHTML = data.bots.map(bot => {
+                    const memPct = bot.peak_memory_pct || (memLimit > 0 ? (bot.peak_memory_mb / memLimit) * 100 : 0);
+                    const memClass = memPct > 90 ? 'high' : memPct > 70 ? 'medium' : 'low';
+
+                    const cpuPct = bot.peak_cpu_pct || (cpuLimit > 0 ? (bot.peak_cpu_millicores / cpuLimit) * 100 : 0);
+                    const cpuClass = cpuPct > 90 ? 'high' : cpuPct > 70 ? 'medium' : 'low';
+
+                    // Use outcome field for status
+                    const outcome = bot.outcome || 'Unknown';
+                    const statusClass = outcome === 'Failed' ? 'badge-error'
+                        : outcome === 'Ended' ? 'badge-success'
+                        : outcome === 'Running' ? 'badge-warning'
+                        : 'badge-secondary';
+
+                    // Use object_id for display
+                    const displayId = bot.object_id || `bot_${bot.bot_id}`;
+
+                    return `
+                        <tr onclick="showBotResources('${bot.object_id || bot.bot_id}')">
+                            <td><code>${displayId.substring(0, 16)}...</code></td>
+                            <td><span class="badge ${statusClass}">${escapeHtml(outcome)}</span></td>
+                            <td>
+                                <span class="resource-bar-inline"><span class="fill ${memClass}" style="width: ${Math.min(memPct, 100)}%"></span></span>
+                                ${bot.peak_memory_mb.toFixed(0)} MB
+                            </td>
+                            <td>
+                                <span class="resource-bar-inline"><span class="fill ${cpuClass}" style="width: ${Math.min(cpuPct, 100)}%"></span></span>
+                                ${bot.peak_cpu_millicores.toFixed(0)}m
+                            </td>
+                            <td>${memLimit} MB</td>
+                            <td>${bot.snapshot_count ? bot.snapshot_count + ' snapshots' : '--'}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load resource summary:', error);
+            }
+        }
+
+        async function showBotResources(botId) {
+            const modal = document.getElementById('bot-resource-modal');
+            modal.classList.add('visible');
+            document.getElementById('modal-bot-id').textContent = botId.substring(0, 20);
+
+            // Clear previous charts
+            if (memoryChart) {
+                memoryChart.destroy();
+                memoryChart = null;
+            }
+            if (cpuChart) {
+                cpuChart.destroy();
+                cpuChart = null;
+            }
+
+            try {
+                const data = await fetch(`/dashboard/api/resources/bot/?bot_id=${botId}`).then(r => r.json());
+
+                // API returns time_series, not snapshots
+                const snapshots = data.time_series || [];
+                if (snapshots.length === 0) {
+                    document.getElementById('modal-peak-mem').textContent = '--';
+                    document.getElementById('modal-peak-cpu').textContent = '--';
+                    document.getElementById('modal-mem-limit').textContent = '--';
+                    document.getElementById('modal-oom').textContent = '--';
+                    return;
+                }
+
+                // API returns nested peak and limits objects
+                const peak = data.peak || {};
+                const limits = data.limits || {};
+
+                // Update info grid
+                document.getElementById('modal-peak-mem').textContent = (peak.memory_mb || 0).toFixed(0) + ' MB';
+                document.getElementById('modal-peak-cpu').textContent = (peak.cpu_millicores || 0).toFixed(0) + 'm';
+                document.getElementById('modal-mem-limit').textContent = limits.memory_mb ? limits.memory_mb + ' MB' : '--';
+
+                const memPct = limits.memory_mb > 0 ? (peak.memory_mb / limits.memory_mb) * 100 : 0;
+                const oomItem = document.getElementById('modal-oom-item');
+                const oomValue = document.getElementById('modal-oom');
+                if (memPct > 95) {
+                    oomValue.textContent = 'CRITICAL';
+                    oomItem.className = 'bot-info-item error';
+                } else if (memPct > 85) {
+                    oomValue.textContent = 'High';
+                    oomItem.className = 'bot-info-item warning';
+                } else {
+                    oomValue.textContent = 'Low';
+                    oomItem.className = 'bot-info-item';
+                }
+
+                // Prepare chart data
+                const labels = snapshots.map(s => {
+                    const d = new Date(s.timestamp);
+                    return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                });
+                const memoryData = snapshots.map(s => s.memory_mb);
+                const cpuData = snapshots.map(s => s.cpu_millicores);
+
+                // Memory chart
+                const memCtx = document.getElementById('memory-chart').getContext('2d');
+                memoryChart = new Chart(memCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Memory Usage (MB)',
+                                data: memoryData,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                fill: true,
+                                tension: 0.3,
+                                pointRadius: 2,
+                            },
+                            limits.memory_mb ? {
+                                label: 'Memory Limit',
+                                data: Array(labels.length).fill(limits.memory_mb),
+                                borderColor: '#ef4444',
+                                borderDash: [5, 5],
+                                fill: false,
+                                pointRadius: 0,
+                            } : null
+                        ].filter(Boolean)
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: true, position: 'top' }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'MB' }
+                            }
+                        }
+                    }
+                });
+
+                // CPU chart
+                const cpuCtx = document.getElementById('cpu-chart').getContext('2d');
+                cpuChart = new Chart(cpuCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'CPU Usage (millicores)',
+                                data: cpuData,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                fill: true,
+                                tension: 0.3,
+                                pointRadius: 2,
+                            },
+                            limits.cpu_millicores ? {
+                                label: 'CPU Limit',
+                                data: Array(labels.length).fill(limits.cpu_millicores),
+                                borderColor: '#ef4444',
+                                borderDash: [5, 5],
+                                fill: false,
+                                pointRadius: 0,
+                            } : null
+                        ].filter(Boolean)
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: true, position: 'top' }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'millicores' }
+                            }
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error('Failed to load bot resources:', error);
+            }
+        }
+
+        function closeBotModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('bot-resource-modal').classList.remove('visible');
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeBotModal();
+        });
 
         // Infrastructure Status
         let currentMode = 'docker';

@@ -25,6 +25,10 @@ urlpatterns = [
     path('api/k8s/deployments/', views.KubernetesDeploymentsAPI.as_view(), name='api-k8s-deployments'),
     path('api/k8s/metrics/', views.KubernetesResourceMetricsAPI.as_view(), name='api-k8s-metrics'),
 
+    # Resource Monitoring APIs
+    path('api/resources/summary/', views.ResourceSummaryAPI.as_view(), name='api-resource-summary'),
+    path('api/resources/bot/', views.BotResourcesAPI.as_view(), name='api-bot-resources'),
+
     # Webhooks
     path('webhook/google-calendar/', views.GoogleCalendarWebhook.as_view(), name='google-calendar-webhook'),
 

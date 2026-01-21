@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bot-cleanup
+  namespace: attendee
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          serviceAccountName: attendee-bot-creator
+          restartPolicy: OnFailure
+          containers:
+          - name: cleanup
+            image: ghcr.io/hjs48/attendee:latest
+            imagePullPolicy: Never
+            command:
+              - python
+              - manage.py
+              - clean_up_bots_with_heartbeat_timeout_or_that_never_launched
+            envFrom:
+              - configMapRef:
+                  name: env
+              - secretRef:
+                  name: app-secrets
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
