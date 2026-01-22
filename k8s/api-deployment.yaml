@@ -24,7 +24,7 @@ spec:
       containers:
       - name: api
         image: ghcr.io/hjs48/attendee:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
         ports:
         - containerPort: 8000
@@ -40,7 +40,10 @@ spec:
             memory: "512Mi"
           limits:
             cpu: "1000m"
-            memory: "1Gi"
+            memory: "2Gi"
+        volumeMounts:
+        - name: code-volume
+          mountPath: /attendee
         readinessProbe:
           httpGet:
             path: /health/
@@ -53,6 +56,11 @@ spec:
             port: 8000
           initialDelaySeconds: 30
           periodSeconds: 10
+      volumes:
+      - name: code-volume
+        hostPath:
+          path: /home/deploy/meetings/attendee
+          type: Directory
 ---
 # Service to expose the API within the cluster
 apiVersion: v1

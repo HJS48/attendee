@@ -34,7 +34,7 @@ data:
   # Bot resource limits (reduced for single-node setup)
   BOT_CPU_REQUEST: "1500m"
   BOT_MEMORY_REQUEST: "2Gi"
-  BOT_MEMORY_LIMIT: "3Gi"
+  BOT_MEMORY_LIMIT: "8Gi"
   BOT_EPHEMERAL_STORAGE_REQUEST: "5Gi"
 
   # Chrome settings
