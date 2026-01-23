@@ -5,7 +5,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from bots.models import AsyncTranscription, AsyncTranscriptionManager, AsyncTranscriptionStates, TranscriptionFailureReasons, Utterance
-from bots.tasks.process_utterance_task import process_utterance
+from bots.tasks.process_utterance_task import process_utterance, process_utterance_sync
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,12 @@ def create_utterances_for_transcription(async_transcription):
             duration_ms=audio_chunk.duration_ms,
         )
 
-        # Spread out the utterance tasks a bit
-        process_utterance.apply_async(args=[utterance.id], countdown=utterance_task_delay_seconds)
+        # Spread out the utterance tasks a bit (routes to K8s or Celery)
+        from bots.task_executor import is_kubernetes_mode, task_executor
+        if is_kubernetes_mode():
+            task_executor.submit_delayed(process_utterance_sync, countdown=utterance_task_delay_seconds, args=(utterance.id,))
+        else:
+            process_utterance.apply_async(args=[utterance.id], countdown=utterance_task_delay_seconds)
         utterance_task_delay_seconds += 1
 
     # After the utterances have been created and queued for transcription, set the recording artifact to in progress
