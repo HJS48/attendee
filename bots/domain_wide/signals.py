@@ -167,12 +167,12 @@ def sync_meeting_to_supabase_on_end(sender, instance, **kwargs):
     if not instance.meeting_url:
         return
 
-    # Queue async task to avoid blocking
+    # Queue async task to avoid blocking (routes to K8s or Celery)
     try:
-        from .tasks import sync_meeting_to_supabase
-        sync_meeting_to_supabase.delay(str(instance.object_id))
+        from .tasks import enqueue_sync_meeting_to_supabase_task
+        enqueue_sync_meeting_to_supabase_task(str(instance.object_id))
         logger.debug(f"Queued Supabase sync for bot {instance.object_id}")
     except ImportError:
-        logger.warning("sync_meeting_to_supabase task not found, skipping Supabase sync")
+        logger.warning("enqueue_sync_meeting_to_supabase_task not found, skipping Supabase sync")
     except Exception as e:
         logger.exception(f"Failed to queue Supabase sync for bot {instance.object_id}: {e}")

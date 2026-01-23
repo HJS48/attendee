@@ -54,7 +54,7 @@ from .models import (
     ZoomOAuthApp,
 )
 from .stripe_utils import credit_amount_for_purchase_amount_dollars, process_checkout_session_completed
-from .tasks.deliver_webhook_task import deliver_webhook
+from .tasks.deliver_webhook_task import deliver_webhook, deliver_webhook_sync
 from .utils import generate_recordings_json_for_bot_detail_view
 from .zoom_oauth_apps_api_utils import create_or_update_zoom_oauth_app
 
@@ -1055,8 +1055,12 @@ class ResendWebhookDeliveryAttemptView(LoginRequiredMixin, View):
             webhook_delivery_attempt.status = WebhookDeliveryAttemptStatus.PENDING
             webhook_delivery_attempt.save()
 
-            # Queue the webhook for delivery
-            deliver_webhook.delay(webhook_delivery_attempt.id)
+            # Queue the webhook for delivery (routes to K8s or Celery)
+            from .task_executor import is_kubernetes_mode, task_executor
+            if is_kubernetes_mode():
+                task_executor.submit(deliver_webhook_sync, webhook_delivery_attempt.id)
+            else:
+                deliver_webhook.delay(webhook_delivery_attempt.id)
 
         # Return a simple confirmation badge - user can refresh page to see final status
         return HttpResponse(

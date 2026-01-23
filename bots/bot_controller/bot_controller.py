@@ -873,8 +873,9 @@ class BotController:
                         logger.info("Redis connection closed by server. Attempting to reconnect...")
                         repeatedly_try_to_reconnect_to_redis()
 
+                    elif isinstance(e, ValueError):
+                        break  # Expected during shutdown
                     else:
-                        # log the type of exception
                         logger.info(f"Error in Redis listener: {type(e)} {e}")
                         break
 

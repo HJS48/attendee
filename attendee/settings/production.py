@@ -7,6 +7,16 @@ from .base import *
 from .base import LOG_FORMATTERS
 
 DEBUG = False
+
+# Task execution mode: 'kubernetes' uses ThreadPoolExecutor, 'docker' uses Celery
+LAUNCH_BOT_METHOD = os.getenv("LAUNCH_BOT_METHOD", "docker")
+
+# Calendar sync interval in minutes (default: 30, can be reduced for faster sync)
+CALENDAR_SYNC_INTERVAL_MINUTES = int(os.getenv("CALENDAR_SYNC_INTERVAL_MINUTES", "10"))
+
+# Google Calendar webhook URL for push notifications
+GOOGLE_CALENDAR_WEBHOOK_URL = os.getenv("GOOGLE_WEBHOOK_URL")
+
 ALLOWED_HOSTS = ["*"]
 
 DATABASES = {

@@ -1575,7 +1575,7 @@ class BotEventManager:
 
     @classmethod
     def after_new_state_is_fatal_error(cls, bot: Bot, event_type: BotEventTypes, event_sub_type: BotEventSubTypes, new_state: BotStates):
-        from bots.tasks import send_slack_alert
+        from bots.tasks.send_slack_alert_task import enqueue_send_slack_alert_task
 
         # Make sure the event type is FATAL_ERROR, this indicates an unexpected failure
         if event_type != BotEventTypes.FATAL_ERROR:
@@ -1591,7 +1591,7 @@ class BotEventManager:
         if last_bot_resource_snapshot:
             last_bot_resource_snapshot_data = json.dumps(last_bot_resource_snapshot.data)
         message = f"Bot {bot.object_id} encountered a fatal error. Site Domain: {settings.SITE_DOMAIN}. Event sub type: {BotEventSubTypes.sub_type_to_api_code(event_sub_type)}. Last bot resource snapshot: {last_bot_resource_snapshot_data}"
-        send_slack_alert.delay(message)
+        enqueue_send_slack_alert_task(message)
 
     @classmethod
     def after_new_state_is_joined_recording(cls, bot: Bot, event_type: BotEventTypes, new_state: BotStates):

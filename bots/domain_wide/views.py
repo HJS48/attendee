@@ -21,7 +21,7 @@ from bots.models import (
     Bot, BotStates, Calendar, CalendarEvent, BotEvent, BotEventTypes,
     Recording, RecordingStates, RecordingTranscriptionStates, BotResourceSnapshot
 )
-from bots.tasks.sync_calendar_task import sync_calendar
+from bots.tasks.sync_calendar_task import enqueue_sync_calendar_task
 
 logger = logging.getLogger(__name__)
 
@@ -383,7 +383,7 @@ class GoogleCalendarWebhook(View):
             if calendar:
                 logger.info(f"Triggering sync for {watch_channel.user_email} (calendar {calendar.object_id})")
                 # Trigger async sync task
-                sync_calendar.delay(str(calendar.pk))
+                enqueue_sync_calendar_task(calendar)
             else:
                 logger.warning(f"No calendar linked to watch channel for {watch_channel.user_email}")
 
@@ -682,7 +682,7 @@ class GoogleOAuthCallback(View):
             if cal_created:
                 logger.info(f"Created calendar for {email}")
                 # Trigger initial sync
-                sync_calendar.delay(str(calendar.pk))
+                enqueue_sync_calendar_task(calendar)
         except Exception as e:
             logger.exception(f"Failed to create calendar for {email}: {e}")
             # Non-fatal - credentials are saved
@@ -862,7 +862,7 @@ class MicrosoftOAuthCallback(View):
             if cal_created:
                 logger.info(f"Created Microsoft calendar for {email}")
                 # Trigger initial sync
-                sync_calendar.delay(str(calendar.pk))
+                enqueue_sync_calendar_task(calendar)
         except Exception as e:
             logger.exception(f"Failed to create calendar for {email}: {e}")
             # Non-fatal - credentials are saved

@@ -1,4 +1,5 @@
 import logging
+import time
 
 from celery import shared_task
 from django.utils import timezone
@@ -7,6 +8,46 @@ from bots.models import AsyncTranscription, AsyncTranscriptionManager, AsyncTran
 from bots.tasks.process_utterance_task import process_utterance
 
 logger = logging.getLogger(__name__)
+
+
+def process_async_transcription_sync(async_transcription_id, retry_count=0):
+    """
+    Synchronous version of process_async_transcription for direct execution without Celery.
+    Used in Kubernetes mode where Celery worker is not available.
+    """
+    MAX_RETRIES = 6
+    RETRY_BACKOFF_BASE = 2
+
+    async_transcription = AsyncTranscription.objects.get(id=async_transcription_id)
+
+    try:
+        if async_transcription.state == AsyncTranscriptionStates.COMPLETE or async_transcription.state == AsyncTranscriptionStates.FAILED:
+            return
+
+        if async_transcription.state == AsyncTranscriptionStates.NOT_STARTED:
+            create_utterances_for_transcription(async_transcription)
+
+        check_for_transcription_completion_sync(async_transcription)
+
+    except Exception as e:
+        if retry_count < MAX_RETRIES:
+            backoff_time = RETRY_BACKOFF_BASE ** (retry_count + 1)
+            logger.info(f"Retrying process_async_transcription {async_transcription_id} (attempt {retry_count + 1}/{MAX_RETRIES}) in {backoff_time}s: {e}")
+            time.sleep(backoff_time)
+            return process_async_transcription_sync(async_transcription_id, retry_count + 1)
+        else:
+            logger.exception(f"Unexpected exception in process_async_transcription_sync: {str(e)}")
+            AsyncTranscriptionManager.set_async_transcription_failed(async_transcription, failure_data={})
+
+
+def enqueue_process_async_transcription_task(async_transcription: AsyncTranscription):
+    """Enqueue a process async transcription task."""
+    from bots.task_executor import is_kubernetes_mode, task_executor
+
+    if is_kubernetes_mode():
+        task_executor.submit(process_async_transcription_sync, async_transcription.id)
+    else:
+        process_async_transcription.delay(async_transcription.id)
 
 
 def create_utterances_for_transcription(async_transcription):
@@ -47,7 +88,12 @@ def terminate_transcription(async_transcription):
         AsyncTranscriptionManager.set_async_transcription_complete(async_transcription)
 
 
-def check_for_transcription_completion(async_transcription):
+def check_for_transcription_completion_sync(async_transcription):
+    """
+    Synchronous version of check_for_transcription_completion for Kubernetes mode.
+    """
+    from bots.task_executor import task_executor
+
     in_progress_utterances = async_transcription.utterances.filter(transcription__isnull=True, failure_data__isnull=True)
 
     # If no in progress utterances exist or it's been more than max_runtime_seconds, then we need to terminate the transcription
@@ -59,7 +105,27 @@ def check_for_transcription_completion(async_transcription):
 
     # An in progress utterance exists and we haven't timed out, so we need to check again in 1 minute
     logger.info(f"Checking for transcription completion for recording artifact {async_transcription.id} again in 1 minute")
-    process_async_transcription.apply_async(args=[async_transcription.id], countdown=60)
+    task_executor.submit_delayed(process_async_transcription_sync, countdown=60, args=(async_transcription.id,))
+
+
+def check_for_transcription_completion(async_transcription):
+    from bots.task_executor import is_kubernetes_mode, task_executor
+
+    in_progress_utterances = async_transcription.utterances.filter(transcription__isnull=True, failure_data__isnull=True)
+
+    # If no in progress utterances exist or it's been more than max_runtime_seconds, then we need to terminate the transcription
+    max_runtime_seconds = max(1800, async_transcription.utterances.count() * 3)
+    if not in_progress_utterances.exists() or timezone.now() - async_transcription.started_at > timezone.timedelta(seconds=max_runtime_seconds):
+        logger.info(f"Terminating transcription for recording artifact {async_transcription.id} because no in progress utterances exist or it's been more than 30 minutes")
+        terminate_transcription(async_transcription)
+        return
+
+    # An in progress utterance exists and we haven't timed out, so we need to check again in 1 minute
+    logger.info(f"Checking for transcription completion for recording artifact {async_transcription.id} again in 1 minute")
+    if is_kubernetes_mode():
+        task_executor.submit_delayed(process_async_transcription_sync, countdown=60, args=(async_transcription.id,))
+    else:
+        process_async_transcription.apply_async(args=[async_transcription.id], countdown=60)
 
 
 @shared_task(

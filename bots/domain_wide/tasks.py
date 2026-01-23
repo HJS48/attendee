@@ -33,8 +33,8 @@ def sync_all_pilot_calendars():
         ).first()
 
         if calendar:
-            from bots.tasks.sync_calendar_task import sync_calendar
-            sync_calendar.delay(calendar.id)
+            from bots.tasks.sync_calendar_task import enqueue_sync_calendar_task
+            enqueue_sync_calendar_task(calendar)
             results.append({'email': email, 'status': 'queued'})
             logger.info(f"Queued sync for {email}")
         else:
@@ -104,6 +104,24 @@ def sync_pending_meetings_to_supabase():
     return {'synced': synced, 'failed': failed}
 
 
+def sync_meeting_to_supabase_sync(bot_id: str):
+    """
+    Synchronous version of sync_meeting_to_supabase for direct execution without Celery.
+    Used in Kubernetes mode where Celery worker is not available.
+    """
+    return _sync_meeting_to_supabase_impl(bot_id)
+
+
+def enqueue_sync_meeting_to_supabase_task(bot_id: str):
+    """Enqueue a sync meeting to supabase task."""
+    from bots.task_executor import is_kubernetes_mode, task_executor
+
+    if is_kubernetes_mode():
+        task_executor.submit(sync_meeting_to_supabase_sync, bot_id)
+    else:
+        sync_meeting_to_supabase.delay(bot_id)
+
+
 @shared_task
 def sync_meeting_to_supabase(bot_id: str):
     """
@@ -111,6 +129,13 @@ def sync_meeting_to_supabase(bot_id: str):
 
     Collects meeting metadata, transcript, and participants from Bot/Recording/Utterances,
     then upserts to Supabase meetings table for downstream automations.
+    """
+    return _sync_meeting_to_supabase_impl(bot_id)
+
+
+def _sync_meeting_to_supabase_impl(bot_id: str):
+    """
+    Implementation of sync_meeting_to_supabase shared by both Celery and sync versions.
     """
     from bots.models import Bot, Recording, RecordingStates, Participant
     from .supabase_client import upsert_meeting

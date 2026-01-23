@@ -263,12 +263,17 @@ class Command(BaseCommand):
         We renew channels that expire within 48 hours.
         """
         from bots.domain_wide.models import GoogleWatchChannel
+        from bots.task_executor import is_kubernetes_mode, task_executor
 
         threshold = timezone.now() + timezone.timedelta(hours=48)
         expiring_count = GoogleWatchChannel.objects.filter(expiration__lt=threshold).count()
 
         if expiring_count > 0:
             log.info(f"Found {expiring_count} expiring watch channels, triggering renewal task")
-            renew_expiring_watch_channels.delay()
+            if is_kubernetes_mode():
+                # In K8s mode, run synchronously via task executor
+                task_executor.submit(renew_expiring_watch_channels)
+            else:
+                renew_expiring_watch_channels.delay()
         else:
             log.debug("No watch channels need renewal")

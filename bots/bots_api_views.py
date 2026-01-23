@@ -58,7 +58,7 @@ from .serializers import (
     SpeechSerializer,
     TranscriptUtteranceSerializer,
 )
-from .tasks import process_async_transcription
+from .tasks.process_async_transcription_task import enqueue_process_async_transcription_task
 from .throttling import ProjectPostThrottle
 
 TokenHeaderParameter = [
@@ -840,8 +840,8 @@ class TranscriptView(APIView):
 
             async_transcription = AsyncTranscription.objects.create(recording=recording, settings=serializer.validated_data)
 
-            # Create celery task to process the async transcription
-            process_async_transcription.delay(async_transcription.id)
+            # Enqueue task to process the async transcription (routes to K8s or Celery)
+            enqueue_process_async_transcription_task(async_transcription)
 
             return Response(AsyncTranscriptionSerializer(async_transcription).data)
         except Bot.DoesNotExist:

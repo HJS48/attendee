@@ -1,5 +1,5 @@
 from bots.models import Project, ZoomOAuthApp
-from bots.tasks import validate_zoom_oauth_connections
+from bots.tasks.validate_zoom_oauth_connections_task import enqueue_validate_zoom_oauth_connections_task
 from bots.zoom_oauth_connections_utils import client_id_and_secret_is_valid
 
 
@@ -31,7 +31,7 @@ def create_or_update_zoom_oauth_app(project: Project, client_id: str, client_sec
         # If the client_secret was valid and is not equal to the current client_secret, validate the zoom oauth connections associated with this app
         # Since they might have been disconnected due to the previous client_secret being invalid
         if client_secret and client_secret != zoom_oauth_app.client_secret:
-            validate_zoom_oauth_connections.delay(zoom_oauth_app.id)
+            enqueue_validate_zoom_oauth_connections_task(zoom_oauth_app.id)
 
         # Build updated credentials dict, preserving existing values if new ones are blank
         updated_credentials = {"client_secret": client_secret if client_secret else existing_credentials.get("client_secret", ""), "webhook_secret": webhook_secret if webhook_secret else existing_credentials.get("webhook_secret", "")}

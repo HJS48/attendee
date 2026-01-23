@@ -1,4 +1,5 @@
 import logging
+import time
 
 from django.db import transaction
 from django.utils import timezone
@@ -11,8 +12,60 @@ logger = logging.getLogger(__name__)
 from celery import shared_task
 
 
+def sync_zoom_oauth_connection_sync(zoom_oauth_connection_id, retry_count=0):
+    """
+    Synchronous version of sync_zoom_oauth_connection for direct execution without Celery.
+    Used in Kubernetes mode where Celery worker is not available.
+    Implements retry logic with exponential backoff.
+    """
+    MAX_RETRIES = 6
+    RETRY_BACKOFF_BASE = 2
+
+    logger.info(f"Syncing zoom oauth connection {zoom_oauth_connection_id} (sync)")
+    zoom_oauth_connection = ZoomOAuthConnection.objects.get(id=zoom_oauth_connection_id)
+
+    try:
+        # Set the sync start time
+        sync_started_at = timezone.now()
+
+        access_token = _get_access_token(zoom_oauth_connection)
+        zoom_meetings = _get_zoom_meetings(access_token)
+
+        logger.info(f"Fetched {len(zoom_meetings)} meetings from Zoom for zoom oauth connection {zoom_oauth_connection_id}")
+
+        zoom_personal_meeting_id = _get_zoom_personal_meeting_id(access_token)
+        zoom_meeting_ids = [zoom_meeting["id"] for zoom_meeting in zoom_meetings] + [zoom_personal_meeting_id]
+
+        _upsert_zoom_meeting_to_zoom_oauth_connection_mapping(zoom_meeting_ids, zoom_oauth_connection)
+
+        # Update zoom oauth connection sync success timestamp and window
+        zoom_oauth_connection.last_attempted_sync_at = timezone.now()
+        zoom_oauth_connection.last_successful_sync_at = zoom_oauth_connection.last_attempted_sync_at
+        zoom_oauth_connection.last_successful_sync_started_at = sync_started_at
+        zoom_oauth_connection.state = ZoomOAuthConnectionStates.CONNECTED
+        zoom_oauth_connection.connection_failure_data = None
+        zoom_oauth_connection.save()
+
+    except ZoomAPIAuthenticationError as e:
+        _handle_zoom_api_authentication_error(zoom_oauth_connection, e)
+
+    except Exception as e:
+        if retry_count < MAX_RETRIES:
+            backoff_time = RETRY_BACKOFF_BASE ** (retry_count + 1)
+            logger.info(f"Retrying sync_zoom_oauth_connection {zoom_oauth_connection_id} (attempt {retry_count + 1}/{MAX_RETRIES}) in {backoff_time}s: {e}")
+            time.sleep(backoff_time)
+            return sync_zoom_oauth_connection_sync(zoom_oauth_connection_id, retry_count + 1)
+        else:
+            logger.exception(f"Zoom OAuth connection sync failed with {type(e).__name__} for {zoom_oauth_connection_id}: {e}")
+            zoom_oauth_connection.last_attempted_sync_at = timezone.now()
+            zoom_oauth_connection.save()
+            raise
+
+
 def enqueue_sync_zoom_oauth_connection_task(zoom_oauth_connection: ZoomOAuthConnection):
     """Enqueue a sync zoom oauth connection task for a zoom oauth connection."""
+    from bots.task_executor import is_kubernetes_mode, task_executor
+
     if not zoom_oauth_connection.is_local_recording_token_supported:
         logger.info(f"Skipping sync zoom oauth connection task for {zoom_oauth_connection.id} because it does not support local recording tokens")
         return
@@ -21,7 +74,11 @@ def enqueue_sync_zoom_oauth_connection_task(zoom_oauth_connection: ZoomOAuthConn
         zoom_oauth_connection.sync_task_enqueued_at = timezone.now()
         zoom_oauth_connection.sync_task_requested_at = None
         zoom_oauth_connection.save()
-        sync_zoom_oauth_connection.delay(zoom_oauth_connection.id)
+
+        if is_kubernetes_mode():
+            task_executor.submit(sync_zoom_oauth_connection_sync, zoom_oauth_connection.id)
+        else:
+            sync_zoom_oauth_connection.delay(zoom_oauth_connection.id)
 
 
 @shared_task(
