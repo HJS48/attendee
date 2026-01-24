@@ -20,9 +20,9 @@ spec:
             image: ghcr.io/hjs48/attendee:latest
             imagePullPolicy: Never
             command:
-              - python
-              - manage.py
-              - clean_up_bots_with_heartbeat_timeout_or_that_never_launched
+              - /bin/sh
+              - -c
+              - "python manage.py clean_up_bots_with_heartbeat_timeout_or_that_never_launched && python manage.py clean_up_completed_bot_pods"
             envFrom:
               - configMapRef:
                   name: env

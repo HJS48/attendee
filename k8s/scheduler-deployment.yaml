@@ -38,6 +38,16 @@ spec:
           limits:
             cpu: "500m"
             memory: "512Mi"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pgrep -f "manage.py run_scheduler" > /dev/null
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          failureThreshold: 3
+          timeoutSeconds: 5
         volumeMounts:
         - name: code-volume
           mountPath: /attendee

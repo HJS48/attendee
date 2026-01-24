@@ -1613,6 +1613,9 @@ class BotController:
             if bot_start_time < timezone.now() - timedelta(minutes=15):
                 logger.info("Received message that we were blocked by platform repeatedly but bot was created more than 15 minutes ago, so not recreating pod")
 
+                # Refresh state before creating event to avoid stale state race condition
+                self.bot_in_db.refresh_from_db()
+
                 new_bot_event = BotEventManager.create_event(
                     bot=self.bot_in_db,
                     event_type=BotEventTypes.FATAL_ERROR,
@@ -1641,6 +1644,9 @@ class BotController:
 
             screenshot_available = message.get("screenshot_path") is not None
             mhtml_file_available = message.get("mhtml_file_path") is not None
+
+            # Refresh state before creating event to avoid stale state race condition
+            self.bot_in_db.refresh_from_db()
 
             new_bot_event = BotEventManager.create_event(
                 bot=self.bot_in_db,
@@ -1702,6 +1708,10 @@ class BotController:
         if message.get("message") == BotAdapter.Messages.MEETING_ENDED:
             logger.info("Received message that meeting ended")
             self.flush_utterances()
+
+            # Refresh state before checking to avoid stale state race condition
+            self.bot_in_db.refresh_from_db()
+
             if self.bot_in_db.state in BotStates.post_meeting_states():
                 logger.info(f"Bot already in terminal state {self.bot_in_db.state}, skipping meeting_ended event")
             elif self.bot_in_db.state == BotStates.LEAVING:
