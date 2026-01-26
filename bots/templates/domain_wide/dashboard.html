@@ -35,36 +35,43 @@
         .refresh-btn:hover { background: #0056b3; }
         .last-updated { color: #888; font-size: 13px; }
 
-        /* All-time stats row */
-        .stats-row {
+        /* Coverage Pipeline */
+        .coverage-pipeline {
             display: flex;
-            gap: 16px;
+            align-items: center;
+            gap: 8px;
             margin-bottom: 20px;
-        }
-        .stat-card {
             background: white;
             border-radius: 8px;
             padding: 16px 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .pipeline-step {
             flex: 1;
             text-align: center;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
         }
-        .stat-card .value {
-            font-size: 28px;
+        .pipeline-step .value {
+            font-size: 24px;
             font-weight: bold;
             color: #333;
         }
-        .stat-card .label {
-            font-size: 12px;
+        .pipeline-step .label {
+            font-size: 11px;
             color: #666;
-            margin-top: 4px;
+            margin-top: 2px;
         }
-        .stat-card .arrow {
-            font-size: 20px;
+        .pipeline-step.highlight {
+            background: #d4edda;
+        }
+        .pipeline-step.highlight .value { color: #28a745; }
+        .pipeline-arrow {
             color: #ccc;
-            margin: 0 -8px;
+            font-size: 18px;
+            flex-shrink: 0;
         }
-        .stat-card.highlight .value { color: #28a745; }
 
         .card {
             background: white;
@@ -500,6 +507,128 @@
         }
         .bot-info-item.warning .value { color: #f59e0b; }
         .bot-info-item.error .value { color: #ef4444; }
+
+        /* System Health Bar */
+        .system-health-bar {
+            background: white;
+            border-radius: 8px;
+            padding: 12px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .health-item { display: flex; align-items: center; gap: 8px; }
+        .health-item .label { font-size: 13px; color: #666; }
+        .health-item .status-dot { width: 10px; height: 10px; }
+        .issues-badge { background: #ef4444; color: white; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .issues-badge.none { background: #10b981; }
+
+        /* Active Issues Panel */
+        .active-issues-panel {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .active-issues-panel.hidden { display: none; }
+        .active-issues-panel h2 { color: #dc2626; font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .issue-group { margin-bottom: 12px; }
+        .issue-group:last-child { margin-bottom: 0; }
+        .issue-group h3 { font-size: 14px; color: #991b1b; margin-bottom: 8px; }
+        .issue-items { display: flex; flex-wrap: wrap; gap: 8px; }
+        .issue-item { background: white; border: 1px solid #fecaca; border-radius: 6px; padding: 8px 12px; font-size: 13px; }
+        .issue-item .count { font-weight: 600; color: #dc2626; }
+
+        /* Two Column Layout */
+        .two-column-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        @media (max-width: 1200px) { .two-column-grid { grid-template-columns: 1fr; } }
+
+        /* Collapsible Sections */
+        .collapsible-header { cursor: pointer; user-select: none; }
+        .collapsible-header::before { content: '\25BC'; margin-right: 8px; font-size: 10px; display: inline-block; transition: transform 0.2s; }
+        .collapsible-header.collapsed::before { transform: rotate(-90deg); }
+        .collapsible-content.collapsed { display: none; }
+
+        /* Processing Pipeline Card */
+        .processing-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        .processing-col {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        .processing-col h4 {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .processing-metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 13px;
+        }
+        .processing-metric .value { font-weight: 600; }
+        .processing-metric .value.error { color: #dc3545; }
+        .processing-metric .value.warning { color: #f59e0b; }
+
+        /* External Integrations Card */
+        .integrations-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        .integration-col {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        .integration-col h4 {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        @media (max-width: 900px) {
+            .integrations-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        /* Celery section enhanced */
+        .celery-enhanced {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+        }
+        .celery-stat {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+        }
+        .celery-stat h4 {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        .celery-stat .value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .celery-stat .sublabel {
+            font-size: 10px;
+            color: #888;
+            margin-top: 2px;
+        }
     </style>
     <!-- Chart.js for resource graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -514,60 +643,93 @@
             </div>
         </div>
 
-        <!-- Section 1: All-Time Stats -->
-        <div class="stats-row">
-            <div class="stat-card">
+        <!-- System Health Bar -->
+        <div class="system-health-bar" id="system-health-bar">
+            <div class="health-item">
+                <span class="label">Scheduler</span>
+                <span class="status-dot" id="health-scheduler"></span>
+            </div>
+            <div class="health-item">
+                <span class="label">Worker</span>
+                <span class="status-dot" id="health-worker"></span>
+            </div>
+            <div class="health-item">
+                <span class="label">Database</span>
+                <span class="status-dot" id="health-database"></span>
+            </div>
+            <div class="health-item">
+                <span class="label">Redis</span>
+                <span class="status-dot" id="health-redis"></span>
+            </div>
+            <div class="health-item k8s-only" style="display: none;">
+                <span class="label">K8s API</span>
+                <span class="status-dot" id="health-k8s-api"></span>
+            </div>
+            <div class="health-item k8s-only" style="display: none;">
+                <span class="label">Nodes</span>
+                <span id="health-nodes">--</span>
+            </div>
+            <div class="health-item" style="margin-left: auto;">
+                <span class="issues-badge none" id="issues-badge">0 Issues</span>
+            </div>
+        </div>
+
+        <!-- Active Issues Panel -->
+        <div class="active-issues-panel hidden" id="active-issues-panel">
+            <h2><span>!</span> Active Issues</h2>
+            <div id="issues-content">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Section 1: Coverage Pipeline -->
+        <div class="coverage-pipeline">
+            <div class="pipeline-step">
                 <div class="value" id="total-events">--</div>
                 <div class="label">Total Events</div>
             </div>
-            <div class="stat-card">
-                <div class="arrow">-></div>
-            </div>
-            <div class="stat-card">
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">
                 <div class="value" id="events-with-url">--</div>
-                <div class="label">Events with URL</div>
+                <div class="label">With URL</div>
             </div>
-            <div class="stat-card">
-                <div class="arrow">-></div>
-            </div>
-            <div class="stat-card">
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">
                 <div class="value" id="unique-events">--</div>
-                <div class="label">Unique Events (deduped)</div>
+                <div class="label">Unique</div>
             </div>
-            <div class="stat-card">
-                <div class="arrow">-></div>
-            </div>
-            <div class="stat-card">
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">
                 <div class="value" id="active-bots">--</div>
-                <div class="label">Active Bots</div>
+                <div class="label">Bots</div>
             </div>
-            <div class="stat-card">
-                <div class="arrow">-></div>
-            </div>
-            <div class="stat-card highlight">
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step highlight">
                 <div class="value" id="coverage-rate">--</div>
                 <div class="label">Coverage</div>
             </div>
         </div>
 
-        <!-- Section 2: Bot States (All-Time) -->
+        <!-- Section 2: Bot States (All-Time) - Collapsible -->
         <div class="card">
-            <div class="card-header">
+            <div class="card-header collapsible-header collapsed" onclick="toggleCollapsible('bot-states')">
                 <h2>Bot States (Active)</h2>
                 <span style="color:#888;font-size:13px;">Total bots in DB: <span id="total-bots">--</span></span>
             </div>
-            <table id="states-table">
-                <thead>
-                    <tr>
-                        <th>State</th>
-                        <th>Count</th>
-                        <th>Percentage</th>
-                    </tr>
-                </thead>
-                <tbody id="states-body">
-                    <tr><td colspan="3" class="loading">Loading...</td></tr>
-                </tbody>
-            </table>
+            <div id="bot-states" class="collapsible-content collapsed">
+                <table id="states-table">
+                    <thead>
+                        <tr>
+                            <th>State</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody id="states-body">
+                        <tr><td colspan="3" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Section 3: Pipeline Status (Per Date) -->
@@ -776,6 +938,130 @@
             </div>
         </div>
 
+        <!-- Two Column Layout: Processing Pipeline + External Integrations -->
+        <div class="two-column-grid">
+            <!-- Processing Pipeline -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Processing Pipeline</h2>
+                </div>
+                <div class="processing-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="processing-col">
+                        <h4>Recordings</h4>
+                        <div class="processing-metric">
+                            <span>In Progress</span>
+                            <span class="value" id="proc-rec-in-progress">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Completed Today</span>
+                            <span class="value" id="proc-rec-completed">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed Today</span>
+                            <span class="value error" id="proc-rec-failed">--</span>
+                        </div>
+                    </div>
+                    <div class="processing-col">
+                        <h4>Transcriptions</h4>
+                        <div class="processing-metric">
+                            <span>In Progress</span>
+                            <span class="value" id="proc-trans-in-progress">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Pending</span>
+                            <span class="value warning" id="proc-trans-pending">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed Today</span>
+                            <span class="value error" id="proc-trans-failed">--</span>
+                        </div>
+                    </div>
+                    <div class="processing-col">
+                        <h4>DeepGram</h4>
+                        <div class="processing-metric">
+                            <span>Completed Today</span>
+                            <span class="value" id="proc-dg-completed">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed (24h)</span>
+                            <span class="value error" id="proc-dg-failed">--</span>
+                        </div>
+                        <div class="processing-metric" id="proc-dg-failure-reasons" style="display: none;">
+                            <span class="value error" style="font-size: 11px;"></span>
+                        </div>
+                    </div>
+                    <div class="processing-col">
+                        <h4>Async Jobs</h4>
+                        <div class="processing-metric">
+                            <span>Not Started</span>
+                            <span class="value" id="proc-async-not-started">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>In Progress</span>
+                            <span class="value" id="proc-async-in-progress">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed Today</span>
+                            <span class="value error" id="proc-async-failed">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- External Integrations -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>External Integrations</h2>
+                </div>
+                <div class="integrations-grid">
+                    <div class="integration-col">
+                        <h4>Zoom OAuth</h4>
+                        <div class="processing-metric">
+                            <span>Connected</span>
+                            <span class="value" id="int-zoom-connected">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Disconnected</span>
+                            <span class="value error" id="int-zoom-disconnected">--</span>
+                        </div>
+                    </div>
+                    <div class="integration-col">
+                        <h4>Google OAuth</h4>
+                        <div class="processing-metric">
+                            <span>Valid</span>
+                            <span class="value" id="int-google-valid">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Expired</span>
+                            <span class="value error" id="int-google-expired">--</span>
+                        </div>
+                    </div>
+                    <div class="integration-col">
+                        <h4>Microsoft OAuth</h4>
+                        <div class="processing-metric">
+                            <span>Valid</span>
+                            <span class="value" id="int-ms-valid">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Expired</span>
+                            <span class="value error" id="int-ms-expired">--</span>
+                        </div>
+                    </div>
+                    <div class="integration-col">
+                        <h4>Webhooks (24h)</h4>
+                        <div class="processing-metric">
+                            <span>Success Rate</span>
+                            <span class="value" id="int-webhook-rate">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed</span>
+                            <span class="value error" id="int-webhook-failed">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Infrastructure Status -->
         <div class="card">
             <div class="card-header">
@@ -888,31 +1174,32 @@
                 </div>
             </div>
 
-            <!-- Celery Queue (shown in both modes) -->
-            <div class="pipeline-grid" style="grid-template-columns: repeat(4, 1fr);">
-                <div class="pipeline-col">
-                    <h3>Workers</h3>
-                    <div class="metric-row">
-                        <span class="metric-value" id="celery-workers">--</span>
-                    </div>
+            <!-- Celery Queue (shown in both modes) - Enhanced -->
+            <div class="celery-enhanced">
+                <div class="celery-stat">
+                    <h4>Worker Pod</h4>
+                    <div class="value"><span class="status-dot" id="celery-worker-status"></span></div>
+                    <div class="sublabel" id="celery-worker-label">Checking...</div>
                 </div>
-                <div class="pipeline-col">
-                    <h3>Active Tasks</h3>
-                    <div class="metric-row">
-                        <span class="metric-value" id="celery-active">--</span>
-                    </div>
+                <div class="celery-stat">
+                    <h4>Redis</h4>
+                    <div class="value"><span class="status-dot" id="celery-redis-status"></span></div>
+                    <div class="sublabel" id="celery-redis-label">Checking...</div>
                 </div>
-                <div class="pipeline-col">
-                    <h3>Pending</h3>
-                    <div class="metric-row">
-                        <span class="metric-value" id="celery-pending">--</span>
-                    </div>
+                <div class="celery-stat">
+                    <h4>Workers</h4>
+                    <div class="value" id="celery-workers">--</div>
+                    <div class="sublabel">active workers</div>
                 </div>
-                <div class="pipeline-col">
-                    <h3>Failed (24h)</h3>
-                    <div class="metric-row">
-                        <span class="metric-value metric-error" id="celery-failed">--</span>
-                    </div>
+                <div class="celery-stat">
+                    <h4>Active Tasks</h4>
+                    <div class="value" id="celery-active">--</div>
+                    <div class="sublabel">processing now</div>
+                </div>
+                <div class="celery-stat">
+                    <h4>Pending</h4>
+                    <div class="value" id="celery-pending">--</div>
+                    <div class="sublabel">in queue</div>
                 </div>
             </div>
         </div>
@@ -929,11 +1216,11 @@
             <div id="k8s-lookup-result" style="display: none;"></div>
         </div>
 
-        <!-- Live Logs Stream -->
+        <!-- Live Logs Stream - Collapsible -->
         <div class="card">
-            <div class="card-header">
+            <div class="card-header collapsible-header collapsed" onclick="toggleCollapsible('live-logs')">
                 <h2>Live Logs</h2>
-                <div class="log-controls">
+                <div class="log-controls" onclick="event.stopPropagation()">
                     <select id="log-source" class="log-select">
                         <option value="worker">worker</option>
                         <option value="scheduler">scheduler</option>
@@ -949,17 +1236,19 @@
                 </div>
             </div>
 
-            <div class="log-container" id="log-container">
-                <div class="log-line log-info">
-                    <span class="log-time">--:--:--</span>
-                    <span class="badge badge-info">INFO</span>
-                    <span class="log-msg">Connecting to log stream...</span>
+            <div id="live-logs" class="collapsible-content collapsed">
+                <div class="log-container" id="log-container">
+                    <div class="log-line log-info">
+                        <span class="log-time">--:--:--</span>
+                        <span class="badge badge-info">INFO</span>
+                        <span class="log-msg">Connecting to log stream...</span>
+                    </div>
                 </div>
-            </div>
 
-            <div class="log-footer">
-                <span id="log-status">Connecting...</span>
-                <span id="log-count">0 lines</span>
+                <div class="log-footer">
+                    <span id="log-status">Connecting...</span>
+                    <span id="log-count">0 lines</span>
+                </div>
             </div>
         </div>
     </div>
@@ -970,7 +1259,185 @@
         document.getElementById('failure-date-picker').valueAsDate = new Date();
 
         async function loadData() {
-            await Promise.all([loadSummary(), loadDateData(), loadFailures(), loadCalendarSync(), loadResourceSummary(), loadInfrastructure()]);
+            await Promise.all([
+                loadSystemHealth(),
+                loadActiveIssues(),
+                loadSummary(),
+                loadDateData(),
+                loadFailures(),
+                loadCalendarSync(),
+                loadResourceSummary(),
+                loadProcessingPipeline(),
+                loadExternalIntegrations(),
+                loadInfrastructure()
+            ]);
+        }
+
+        // Toggle collapsible sections
+        function toggleCollapsible(sectionId) {
+            const content = document.getElementById(sectionId);
+            const header = content.previousElementSibling;
+            content.classList.toggle('collapsed');
+            header.classList.toggle('collapsed');
+        }
+
+        // System Health Bar
+        async function loadSystemHealth() {
+            try {
+                const data = await fetch('/dashboard/api/system-health/').then(r => r.json());
+
+                // Update status dots
+                const setStatus = (id, status) => {
+                    const dot = document.getElementById(id);
+                    if (!dot) return;
+                    dot.className = 'status-dot ' + (
+                        status === 'healthy' ? 'status-green' :
+                        status === 'degraded' ? 'status-yellow' :
+                        status === 'error' ? 'status-red' : 'status-yellow'
+                    );
+                };
+
+                setStatus('health-scheduler', data.scheduler?.status);
+                setStatus('health-worker', data.worker?.status);
+                setStatus('health-database', data.database?.status);
+                setStatus('health-redis', data.redis?.status);
+
+                // K8s-specific items
+                if (data.mode === 'kubernetes') {
+                    document.querySelectorAll('.k8s-only').forEach(el => el.style.display = 'flex');
+                    setStatus('health-k8s-api', data.k8s_api?.status);
+                    document.getElementById('health-nodes').textContent = data.k8s_api?.nodes_ready || '--';
+                }
+
+                // Issues badge
+                const badge = document.getElementById('issues-badge');
+                const count = data.issues_count || 0;
+                badge.textContent = count === 0 ? 'All Clear' : `${count} Issue${count !== 1 ? 's' : ''}`;
+                badge.className = 'issues-badge ' + (count === 0 ? 'none' : '');
+
+            } catch (error) {
+                console.error('Failed to load system health:', error);
+            }
+        }
+
+        // Active Issues Panel
+        async function loadActiveIssues() {
+            try {
+                const data = await fetch('/dashboard/api/active-issues/').then(r => r.json());
+                const panel = document.getElementById('active-issues-panel');
+                const content = document.getElementById('issues-content');
+
+                if (!data.has_issues) {
+                    panel.classList.add('hidden');
+                    return;
+                }
+
+                panel.classList.remove('hidden');
+                let html = '';
+
+                // Stuck bots
+                if (data.stuck_bots?.count > 0) {
+                    html += '<div class="issue-group"><h3>Stuck Bots</h3><div class="issue-items">';
+                    for (const item of data.stuck_bots.by_state) {
+                        html += `<div class="issue-item"><span class="count">${item.count}</span> in ${escapeHtml(item.state)} (>${item.threshold_minutes}min, oldest: ${item.oldest_age_minutes}min)</div>`;
+                    }
+                    html += '</div></div>';
+                }
+
+                // Heartbeat timeout bots
+                if (data.heartbeat_timeout_bots?.count > 0) {
+                    html += `<div class="issue-group"><h3>Heartbeat Timeout</h3><div class="issue-items">`;
+                    html += `<div class="issue-item"><span class="count">${data.heartbeat_timeout_bots.count}</span> bots with stale heartbeat (>10min)</div>`;
+                    html += '</div></div>';
+                }
+
+                // Orphaned recordings
+                if (data.orphaned_recordings?.count > 0) {
+                    html += `<div class="issue-group"><h3>Orphaned Recordings</h3><div class="issue-items">`;
+                    html += `<div class="issue-item"><span class="count">${data.orphaned_recordings.count}</span> recordings in progress with ended bots</div>`;
+                    html += '</div></div>';
+                }
+
+                // Stalled transcriptions
+                if (data.stalled_transcriptions?.count > 0) {
+                    html += `<div class="issue-group"><h3>Stalled Transcriptions</h3><div class="issue-items">`;
+                    html += `<div class="issue-item"><span class="count">${data.stalled_transcriptions.count}</span> transcriptions stuck >30min</div>`;
+                    html += '</div></div>';
+                }
+
+                content.innerHTML = html;
+
+            } catch (error) {
+                console.error('Failed to load active issues:', error);
+            }
+        }
+
+        // Processing Pipeline
+        async function loadProcessingPipeline() {
+            try {
+                const data = await fetch('/dashboard/api/processing-pipeline/').then(r => r.json());
+
+                // Recordings
+                document.getElementById('proc-rec-in-progress').textContent = data.recordings?.in_progress ?? '--';
+                document.getElementById('proc-rec-completed').textContent = data.recordings?.completed_today ?? '--';
+                document.getElementById('proc-rec-failed').textContent = data.recordings?.failed_today ?? '--';
+
+                // Transcriptions
+                document.getElementById('proc-trans-in-progress').textContent = data.transcriptions?.in_progress ?? '--';
+                document.getElementById('proc-trans-pending').textContent = data.transcriptions?.pending_utterances ?? '--';
+                document.getElementById('proc-trans-failed').textContent = data.transcriptions?.failed_today ?? '--';
+
+                // DeepGram
+                document.getElementById('proc-dg-completed').textContent = data.deepgram?.utterances_completed_today ?? '--';
+                document.getElementById('proc-dg-failed').textContent = data.deepgram?.utterances_failed_24h ?? '--';
+
+                // Show failure reasons if there are any
+                const failureReasons = data.deepgram?.failure_reasons_24h || {};
+                const reasonsDiv = document.getElementById('proc-dg-failure-reasons');
+                const reasonEntries = Object.entries(failureReasons);
+                if (reasonEntries.length > 0) {
+                    reasonsDiv.style.display = 'block';
+                    reasonsDiv.querySelector('.value').textContent = reasonEntries
+                        .map(([reason, count]) => `${reason}: ${count}`)
+                        .join(', ');
+                } else {
+                    reasonsDiv.style.display = 'none';
+                }
+
+                // Async jobs
+                document.getElementById('proc-async-not-started').textContent = data.async_transcriptions?.not_started ?? '--';
+                document.getElementById('proc-async-in-progress').textContent = data.async_transcriptions?.in_progress ?? '--';
+                document.getElementById('proc-async-failed').textContent = data.async_transcriptions?.failed_today ?? '--';
+
+            } catch (error) {
+                console.error('Failed to load processing pipeline:', error);
+            }
+        }
+
+        // External Integrations
+        async function loadExternalIntegrations() {
+            try {
+                const data = await fetch('/dashboard/api/external-integrations/').then(r => r.json());
+
+                // Zoom OAuth
+                document.getElementById('int-zoom-connected').textContent = data.oauth?.zoom?.connected ?? '--';
+                document.getElementById('int-zoom-disconnected').textContent = data.oauth?.zoom?.disconnected ?? '--';
+
+                // Google OAuth
+                document.getElementById('int-google-valid').textContent = data.oauth?.google?.valid ?? '--';
+                document.getElementById('int-google-expired').textContent = data.oauth?.google?.expired ?? '--';
+
+                // Microsoft OAuth
+                document.getElementById('int-ms-valid').textContent = data.oauth?.microsoft?.valid ?? '--';
+                document.getElementById('int-ms-expired').textContent = data.oauth?.microsoft?.expired ?? '--';
+
+                // Webhooks
+                document.getElementById('int-webhook-rate').textContent = (data.webhooks?.success_rate_24h ?? '--') + '%';
+                document.getElementById('int-webhook-failed').textContent = data.webhooks?.failed_24h ?? '--';
+
+            } catch (error) {
+                console.error('Failed to load external integrations:', error);
+            }
         }
 
         async function loadSummary() {
@@ -1537,15 +2004,42 @@
                     }
                 }
 
-                // Celery status (shown in both modes)
+                // Celery status (shown in both modes) - Enhanced
                 const celery = data.celery || {};
                 document.getElementById('celery-workers').textContent = celery.workers ?? '--';
                 document.getElementById('celery-active').textContent = celery.active_tasks ?? '--';
                 document.getElementById('celery-pending').textContent = celery.pending_tasks ?? '--';
-                document.getElementById('celery-failed').textContent = celery.failed_recent ?? '--';
+
+                // Worker pod status
+                const workerStatus = document.getElementById('celery-worker-status');
+                const workerLabel = document.getElementById('celery-worker-label');
+                if (celery.workers > 0) {
+                    workerStatus.className = 'status-dot status-green';
+                    workerLabel.textContent = 'Running';
+                } else {
+                    workerStatus.className = 'status-dot status-red';
+                    workerLabel.textContent = 'Not Running';
+                }
+
+                // Redis status (inferred from celery connectivity)
+                const redisStatus = document.getElementById('celery-redis-status');
+                const redisLabel = document.getElementById('celery-redis-label');
+                // If we got celery data, Redis is likely connected
+                if (data.celery !== undefined) {
+                    redisStatus.className = 'status-dot status-green';
+                    redisLabel.textContent = 'Connected';
+                } else {
+                    redisStatus.className = 'status-dot status-red';
+                    redisLabel.textContent = 'Disconnected';
+                }
 
             } catch (error) {
                 console.error('Failed to load infrastructure:', error);
+                // Set error states for celery status dots
+                const workerStatus = document.getElementById('celery-worker-status');
+                const redisStatus = document.getElementById('celery-redis-status');
+                if (workerStatus) workerStatus.className = 'status-dot status-yellow';
+                if (redisStatus) redisStatus.className = 'status-dot status-yellow';
             }
         }
 

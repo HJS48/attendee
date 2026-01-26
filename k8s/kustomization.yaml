@@ -10,6 +10,7 @@ resources:
   - configmap.yaml
   - api-deployment.yaml
   - scheduler-deployment.yaml
+  - worker-deployment.yaml
   - ingress.yaml
 
 # Common labels for all resources

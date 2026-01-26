@@ -22,7 +22,9 @@ data:
 
   # Kubernetes mode settings
   LAUNCH_BOT_METHOD: "kubernetes"
-  TASK_EXECUTION_MODE: "kubernetes"
+  # Use Celery for task execution (worker deployment handles transcription tasks)
+  # "kubernetes" mode runs tasks in-process which fails for ephemeral bot pods
+  TASK_EXECUTION_MODE: "celery"
   CUBER_RELEASE_VERSION: "latest"
   BOT_POD_IMAGE: "ghcr.io/hjs48/attendee"
   BOT_POD_NAMESPACE: "attendee"
@@ -47,3 +49,9 @@ data:
   DISABLE_RATE_LIMITING: "true"
   USER_THROTTLE_RATE: "100000/hour"
   ANON_THROTTLE_RATE: "100000/hour"
+
+  # Transcript notification settings
+  INTERNAL_EMAIL_DOMAIN: "soarwithus.co"
+  DEV_BYPASS_EMAIL: "harryschmidt042@gmail.com"
+  TRANSCRIPT_BASE_URL: "https://wayfarrow.info"
+  DEFAULT_FROM_EMAIL: "transcripts@studio258.ai"

@@ -16,6 +16,12 @@ urlpatterns = [
     path('api/infrastructure/', views.InfrastructureStatusAPI.as_view(), name='api-infrastructure'),
     path('api/logs/stream', views.LogStreamView.as_view(), name='api-logs-stream'),
 
+    # System Health APIs (new)
+    path('api/system-health/', views.SystemHealthAPI.as_view(), name='api-system-health'),
+    path('api/active-issues/', views.ActiveIssuesAPI.as_view(), name='api-active-issues'),
+    path('api/processing-pipeline/', views.ProcessingPipelineAPI.as_view(), name='api-processing-pipeline'),
+    path('api/external-integrations/', views.ExternalIntegrationsAPI.as_view(), name='api-external-integrations'),
+
     # Kubernetes APIs
     path('api/k8s/pods/', views.KubernetesPodsAPI.as_view(), name='api-k8s-pods'),
     path('api/k8s/alerts/', views.KubernetesAlertsAPI.as_view(), name='api-k8s-alerts'),

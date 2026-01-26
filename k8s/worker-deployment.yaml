@@ -1,0 +1,73 @@
+# Celery Worker Deployment
+# This runs the Celery worker that processes async tasks (transcription, webhooks, etc.)
+# Required for transcription to work - bot pods queue tasks to Redis, worker processes them
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: attendee-worker
+  namespace: attendee
+  labels:
+    app.kubernetes.io/name: attendee
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: attendee-worker
+  template:
+    metadata:
+      labels:
+        app: attendee-worker
+        app.kubernetes.io/name: attendee
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: attendee-bot-creator
+      containers:
+      - name: worker
+        image: ghcr.io/hjs48/attendee:latest
+        imagePullPolicy: IfNotPresent
+        command: ["celery", "-A", "attendee", "worker", "-l", "INFO", "--concurrency=4"]
+        envFrom:
+        - configMapRef:
+            name: env
+        - secretRef:
+            name: app-secrets
+        env:
+        # Override TASK_EXECUTION_MODE to use Celery (not kubernetes ThreadPoolExecutor)
+        - name: TASK_EXECUTION_MODE
+          value: "celery"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        volumeMounts:
+        - name: code-volume
+          mountPath: /attendee
+        # Simple health check - verify celery process is running
+        # Note: celery inspect ping is too resource-intensive for K8s probes
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "pgrep -f 'celery.*worker' > /dev/null"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "pgrep -f 'celery.*worker' > /dev/null"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      - name: code-volume
+        hostPath:
+          path: /home/deploy/meetings/attendee
+          type: Directory

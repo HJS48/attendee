@@ -1,0 +1,113 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ meeting_title }} - Transcript</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="meeting-id" content="{{ meeting_id }}">
+    <link rel="stylesheet" href="{% static 'css/transcript.css' %}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="meeting-title">{{ meeting_title }}</h1>
+            <div class="meeting-meta">
+                <span class="meta-date">{{ meeting_date }}</span>
+                <span class="meta-separator">&bull;</span>
+                <span class="meta-duration">{{ meeting_duration }}</span>
+                <span class="meta-separator">&bull;</span>
+                <span class="meta-participants">{{ participant_names }}</span>
+            </div>
+        </header>
+
+        {% if summary %}
+        <section class="summary-section" id="summary-section">
+            <div class="summary-card">
+                <div class="summary-header">
+                    <h2>Call Summary</h2>
+                    <button class="copy-btn" id="copy-summary-btn" title="Copy summary to clipboard">
+                        <span class="copy-icon">&#128203;</span>
+                        <span class="copy-text">Copy</span>
+                    </button>
+                </div>
+                <p class="summary-text">{{ summary }}</p>
+            </div>
+        </section>
+        {% endif %}
+
+        <div class="main-content">
+            {% if video_url %}
+            <div class="video-section">
+                <video id="video-player" controls preload="metadata">
+                    <source src="{{ video_url }}" type="video/mp4">
+                    Your browser does not support the video element.
+                </video>
+            </div>
+            {% endif %}
+
+            <div class="transcript-section{% if not video_url %} transcript-full-width{% endif %}">
+                <div class="transcript-header">
+                    <h2>Transcript</h2>
+                    <button class="copy-btn" id="copy-transcript-btn" title="Copy transcript to clipboard">
+                        <span class="copy-icon">&#128203;</span>
+                        <span class="copy-text">Copy</span>
+                    </button>
+                </div>
+                <div class="transcript-container" id="transcript-container">
+                    {% for segment in transcript_segments %}
+                    <div class="transcript-segment" data-start="{{ segment.start_ms }}" data-end="{{ segment.end_ms }}" data-index="{{ segment.index }}">
+                        <div class="segment-header">
+                            <span class="speaker-dot {{ segment.color_class }}"></span>
+                            <span class="speaker-name">{{ segment.speaker_name }}</span>
+                            <span class="segment-time">{{ segment.timestamp }}</span>
+                        </div>
+                        <div class="segment-text">{{ segment.text }}</div>
+                    </div>
+                    {% empty %}
+                    <p class="no-transcript">No transcript available</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <section class="action-items-section" id="action-items-section">
+            <div class="section-header">
+                <h2>Action Items</h2>
+                <button class="copy-btn" id="copy-actions-btn" title="Copy action items to clipboard">
+                    <span class="copy-icon">&#128203;</span>
+                    <span class="copy-text">Copy</span>
+                </button>
+            </div>
+            <div class="action-items-list" id="action-items-list">
+                {% if has_action_items %}
+                    {% for assignee, items in action_items_by_assignee.items %}
+                    <details class="ai-group" open>
+                        <summary class="ai-assignee-header">{{ assignee }} <span class="ai-count">{{ items|length }}</span></summary>
+                        <div class="ai-items">
+                            {% for item in items %}
+                            <div class="ai-row">
+                                <span class="ai-check">&#9744;</span>
+                                <span class="ai-task">
+                                    {{ item.task }}
+                                    {% if item.timestamp %}
+                                    <a href="#" class="ai-timestamp" data-timestamp="{{ item.timestamp }}">{{ item.timestamp }}</a>
+                                    {% endif %}
+                                </span>
+                                <span class="ai-due">
+                                    <span class="ai-due-label">Due:</span> {{ item.due|default:"Not specified" }}
+                                </span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </details>
+                    {% endfor %}
+                {% else %}
+                <p class="no-action-items">No action items identified</p>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+
+    <script src="{% static 'js/transcript.js' %}"></script>
+</body>
+</html>

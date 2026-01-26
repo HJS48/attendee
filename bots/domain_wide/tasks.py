@@ -159,7 +159,6 @@ def _sync_meeting_to_supabase_impl(bot_id: str):
         'attendee_bot_id': str(bot.object_id),
         'meeting_url': bot.meeting_url,
         'title': event.name if event else None,
-        'status': bot.get_state_display() if hasattr(bot, 'get_state_display') else str(bot.state),
     }
 
     # Use recording timestamps if available (more accurate than bot timestamps)
@@ -193,7 +192,7 @@ def _sync_meeting_to_supabase_impl(bot_id: str):
 
                 if text:
                     transcript_segments.append({
-                        'speaker': u.participant.name if u.participant else 'Unknown',
+                        'speaker': u.participant.full_name if u.participant else 'Unknown',
                         'timestamp_ms': u.timestamp_ms,
                         'duration_ms': u.duration_ms,
                         'text': text,
@@ -214,7 +213,7 @@ def _sync_meeting_to_supabase_impl(bot_id: str):
     if participants.exists():
         meeting_data['participants'] = [
             {
-                'name': p.name,
+                'name': p.full_name,
                 'participant_id': str(p.id),
             }
             for p in participants

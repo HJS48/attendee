@@ -137,9 +137,16 @@ task_executor = TaskExecutor()
 
 
 def is_kubernetes_mode() -> bool:
-    """Check if running in Kubernetes mode (no Celery worker available)."""
-    from django.conf import settings
-    return getattr(settings, 'LAUNCH_BOT_METHOD', 'docker') == 'kubernetes'
+    """
+    Check if tasks should run via ThreadPoolExecutor instead of Celery.
+
+    Returns True only if TASK_EXECUTION_MODE is explicitly set to "kubernetes".
+    When a Celery worker is available, set TASK_EXECUTION_MODE to "celery" to
+    route tasks through Celery (required for bot pods since they're ephemeral).
+    """
+    import os
+    task_mode = os.getenv('TASK_EXECUTION_MODE', 'celery')
+    return task_mode == 'kubernetes'
 
 
 class TaskWrapper:
