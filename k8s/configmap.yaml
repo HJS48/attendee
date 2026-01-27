@@ -33,6 +33,10 @@ data:
   BOT_POD_SECRETS_NAME: "app-secrets"
   BOT_POD_SERVICE_ACCOUNT_NAME: "attendee-bot-creator"
 
+  # Mount local code into bot pods (same as api/scheduler/worker deployments)
+  BOT_CODE_VOLUME_HOST_PATH: "/home/deploy/meetings/attendee"
+  BOT_CODE_VOLUME_MOUNT_PATH: "/attendee"
+
   # Bot resource limits (reduced for single-node setup)
   BOT_CPU_REQUEST: "1500m"
   BOT_MEMORY_REQUEST: "2Gi"

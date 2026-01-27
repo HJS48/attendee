@@ -72,43 +72,80 @@ class BotPodCreator:
 
     def get_bot_pod_volumes(self):
         """
-        Use a generic ephemeral volume backed by PD so we can exceed
-        the 10Gi Autopilot local ephemeral-storage cap.
+        Returns volumes for the bot pod:
+        - Code volume (hostPath) if BOT_CODE_VOLUME_HOST_PATH is set
+        - Persistent storage volume if add_persistent_storage is True
 
+        BOT_CODE_VOLUME_HOST_PATH: e.g. "/home/deploy/meetings/attendee"
         BOT_PERSISTENT_STORAGE_SIZE: e.g. "50Gi"
         """
-        if not self.add_persistent_storage:
-            return None
-        
-        size = os.getenv("BOT_PERSISTENT_STORAGE_SIZE", "50Gi")
+        volumes = []
 
-        pvc_spec = client.V1PersistentVolumeClaimSpec(
-            access_modes=["ReadWriteOnce"],
-            resources=client.V1ResourceRequirements(
-                requests={"storage": size}
-            ),
-        )
+        # Add code volume if configured (for local development / mounted code)
+        code_host_path = os.getenv("BOT_CODE_VOLUME_HOST_PATH")
+        if code_host_path:
+            volumes.append(client.V1Volume(
+                name="code-volume",
+                host_path=client.V1HostPathVolumeSource(
+                    path=code_host_path,
+                    type="Directory"
+                ),
+            ))
 
-        pvc_template = client.V1PersistentVolumeClaimTemplate(
-            metadata=client.V1ObjectMeta(
-                labels={"app": self.app_name},
-            ),
-            spec=pvc_spec,
-        )
+        # Add persistent storage if requested
+        if self.add_persistent_storage:
+            size = os.getenv("BOT_PERSISTENT_STORAGE_SIZE", "50Gi")
 
-        return [client.V1Volume(
-            name="bot-persistent-storage",
-            ephemeral=client.V1EphemeralVolumeSource(
-                volume_claim_template=pvc_template
-            ),
-        ),]
+            pvc_spec = client.V1PersistentVolumeClaimSpec(
+                access_modes=["ReadWriteOnce"],
+                resources=client.V1ResourceRequirements(
+                    requests={"storage": size}
+                ),
+            )
+
+            pvc_template = client.V1PersistentVolumeClaimTemplate(
+                metadata=client.V1ObjectMeta(
+                    labels={"app": self.app_name},
+                ),
+                spec=pvc_spec,
+            )
+
+            volumes.append(client.V1Volume(
+                name="bot-persistent-storage",
+                ephemeral=client.V1EphemeralVolumeSource(
+                    volume_claim_template=pvc_template
+                ),
+            ))
+
+        return volumes if volumes else None
 
     def get_bot_container_volume_mounts(self):
-        if not self.add_persistent_storage:
-            return None
-        return [
-            client.V1VolumeMount(name="bot-persistent-storage", mount_path="/bot-persistent-storage"),
-        ]
+        """
+        Returns volume mounts for the bot container:
+        - Code volume mount if BOT_CODE_VOLUME_HOST_PATH is set
+        - Persistent storage mount if add_persistent_storage is True
+
+        BOT_CODE_VOLUME_MOUNT_PATH: e.g. "/attendee" (default)
+        """
+        mounts = []
+
+        # Add code volume mount if configured
+        code_host_path = os.getenv("BOT_CODE_VOLUME_HOST_PATH")
+        if code_host_path:
+            code_mount_path = os.getenv("BOT_CODE_VOLUME_MOUNT_PATH", "/attendee")
+            mounts.append(client.V1VolumeMount(
+                name="code-volume",
+                mount_path=code_mount_path
+            ))
+
+        # Add persistent storage mount if requested
+        if self.add_persistent_storage:
+            mounts.append(client.V1VolumeMount(
+                name="bot-persistent-storage",
+                mount_path="/bot-persistent-storage"
+            ))
+
+        return mounts if mounts else None
 
     def get_bot_pod_security_context(self):
         if not self.add_persistent_storage:
