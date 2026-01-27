@@ -2381,7 +2381,8 @@ class ActiveIssuesAPI(View):
             'stuck_bots': {'count': 0, 'by_state': []},
             'heartbeat_timeout_bots': {'count': 0, 'bots': []},
             'orphaned_recordings': {'count': 0},
-            'stalled_transcriptions': {'count': 0}
+            'stalled_transcriptions': {'count': 0},
+            'stuck_transcript_sync': {'count': 0, 'bots': []}
         }
 
         # Stuck bots - bots that have been in certain states too long
@@ -2448,16 +2449,161 @@ class ActiveIssuesAPI(View):
         ).count()
         issues['stalled_transcriptions']['count'] = stalled
 
+        # Stuck transcript sync - recordings COMPLETE but transcription still IN_PROGRESS for >60 min
+        # This indicates the event-driven pipeline may have missed a signal
+        stuck_sync_cutoff = now - timedelta(minutes=60)
+        stuck_sync = Recording.objects.filter(
+            state=RecordingStates.COMPLETE,
+            transcription_state=RecordingTranscriptionStates.IN_PROGRESS,
+            updated_at__lt=stuck_sync_cutoff,
+            bot__state=BotStates.ENDED
+        ).select_related('bot')
+        stuck_sync_count = stuck_sync.count()
+        if stuck_sync_count > 0:
+            issues['stuck_transcript_sync']['count'] = stuck_sync_count
+            issues['stuck_transcript_sync']['bots'] = [
+                {
+                    'bot_id': r.bot.object_id,
+                    'recording_id': r.id,
+                    'age_minutes': int((now - r.updated_at).total_seconds() / 60)
+                }
+                for r in stuck_sync[:10]
+            ]
+
         # Calculate totals
         issues['total_count'] = (
             issues['stuck_bots']['count'] +
             issues['heartbeat_timeout_bots']['count'] +
             issues['orphaned_recordings']['count'] +
-            issues['stalled_transcriptions']['count']
+            issues['stalled_transcriptions']['count'] +
+            issues['stuck_transcript_sync']['count']
         )
         issues['has_issues'] = issues['total_count'] > 0
 
         return JsonResponse(issues)
+
+
+class MeetingSyncStatusAPI(View):
+    """
+    API for meeting sync pipeline status.
+
+    Shows the two-phase event-driven pipeline status:
+    - Phase 1: Bot ENDED → Meeting created (metadata only, transcript_status='pending')
+    - Phase 2: Transcription COMPLETE → Transcript synced (transcript_status='complete')
+    """
+
+    def get(self, request):
+        from datetime import datetime
+        from django.db.models import Count, Q
+        from .supabase_client import get_supabase_client
+
+        # Support filtering by date
+        date_str = request.GET.get('date')
+        if date_str:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        else:
+            target_date = timezone.now().date()
+
+        # Get all ended bots for the date
+        ended_bots = Bot.objects.filter(
+            state=BotStates.ENDED,
+            updated_at__date=target_date,
+            meeting_url__isnull=False
+        ).exclude(meeting_url='')
+
+        total_ended = ended_bots.count()
+
+        # Get recording stats for ended bots
+        from django.db.models import Exists, OuterRef
+        ended_bot_ids = list(ended_bots.values_list('id', flat=True))
+
+        recordings = Recording.objects.filter(bot_id__in=ended_bot_ids)
+
+        # Recording states
+        rec_complete = recordings.filter(state=RecordingStates.COMPLETE).count()
+        rec_in_progress = recordings.filter(state=RecordingStates.IN_PROGRESS).count()
+        rec_failed = recordings.filter(state=RecordingStates.FAILED).count()
+
+        # Transcription states
+        trans_complete = recordings.filter(transcription_state=RecordingTranscriptionStates.COMPLETE).count()
+        trans_in_progress = recordings.filter(transcription_state=RecordingTranscriptionStates.IN_PROGRESS).count()
+        trans_failed = recordings.filter(transcription_state=RecordingTranscriptionStates.FAILED).count()
+        trans_not_started = recordings.filter(transcription_state=RecordingTranscriptionStates.NOT_STARTED).count()
+
+        # Try to get Supabase sync status
+        supabase_stats = {
+            'not_created': 0,
+            'pending': 0,
+            'complete': 0,
+            'failed': 0,
+            'available': False
+        }
+
+        client = get_supabase_client()
+        if client:
+            try:
+                # Get bot IDs for lookup
+                bot_object_ids = list(ended_bots.values_list('object_id', flat=True))
+
+                if bot_object_ids:
+                    # Query Supabase for meetings with these bot IDs
+                    result = client.table('meetings').select(
+                        'attendee_bot_id, transcript_status'
+                    ).in_('attendee_bot_id', bot_object_ids).execute()
+
+                    supabase_meetings = {m['attendee_bot_id']: m.get('transcript_status', 'pending')
+                                         for m in (result.data or [])}
+
+                    # Count sync statuses
+                    for bot_id in bot_object_ids:
+                        status = supabase_meetings.get(bot_id)
+                        if not status:
+                            supabase_stats['not_created'] += 1
+                        elif status == 'pending':
+                            supabase_stats['pending'] += 1
+                        elif status == 'complete':
+                            supabase_stats['complete'] += 1
+                        elif status == 'failed':
+                            supabase_stats['failed'] += 1
+
+                    supabase_stats['available'] = True
+            except Exception as e:
+                logger.warning(f"Failed to fetch Supabase sync status: {e}")
+
+        # Identify stuck meetings (ended >30 min ago, transcription complete, but not in Supabase or pending)
+        thirty_mins_ago = timezone.now() - timedelta(minutes=30)
+        stuck_count = 0
+
+        if supabase_stats['available']:
+            # Bots with complete transcription but not synced yet
+            complete_trans_bots = recordings.filter(
+                transcription_state=RecordingTranscriptionStates.COMPLETE
+            ).values_list('bot__object_id', flat=True)
+
+            for bot_id in complete_trans_bots:
+                if bot_id not in [m['attendee_bot_id'] for m in (result.data or [])]:
+                    stuck_count += 1
+                elif supabase_meetings.get(bot_id) == 'pending':
+                    stuck_count += 1
+
+        return JsonResponse({
+            'date': target_date.isoformat(),
+            'total_ended_bots': total_ended,
+            'recording_states': {
+                'complete': rec_complete,
+                'in_progress': rec_in_progress,
+                'failed': rec_failed,
+            },
+            'transcription_states': {
+                'complete': trans_complete,
+                'in_progress': trans_in_progress,
+                'failed': trans_failed,
+                'not_started': trans_not_started,
+            },
+            'supabase_sync': supabase_stats,
+            'stuck_meetings': stuck_count,
+            'timestamp': timezone.now().isoformat(),
+        })
 
 
 class SystemHealthAPI(View):
@@ -2696,6 +2842,26 @@ class PipelineActivityAPI(View):
         # Get today's counts by event type
         today_activities = PipelineActivity.objects.filter(created_at__date=today)
 
+        # Helper to count unique meetings by final outcome (most recent status wins)
+        def count_by_final_outcome(queryset):
+            """Count unique meetings by their final (most recent) status."""
+            from django.db.models import Max, Subquery, OuterRef
+
+            # Get the most recent activity ID for each meeting
+            latest_per_meeting = queryset.filter(
+                meeting_id__isnull=False
+            ).values('meeting_id').annotate(
+                latest_id=Max('id')
+            ).values('latest_id')
+
+            # Filter to only the most recent activity per meeting
+            final_outcomes = queryset.filter(id__in=Subquery(latest_per_meeting))
+
+            return {
+                'success': final_outcomes.filter(status=PipelineActivity.Status.SUCCESS).count(),
+                'failed': final_outcomes.filter(status=PipelineActivity.Status.FAILED).count(),
+            }
+
         supabase_syncs = today_activities.filter(
             event_type=PipelineActivity.EventType.SUPABASE_SYNC
         )
@@ -2712,14 +2878,8 @@ class PipelineActivityAPI(View):
         )
 
         return JsonResponse({
-            'supabase_syncs': {
-                'success': supabase_syncs.filter(status=PipelineActivity.Status.SUCCESS).count(),
-                'failed': supabase_syncs.filter(status=PipelineActivity.Status.FAILED).count(),
-            },
-            'insight_extraction': {
-                'success': insight_extraction.filter(status=PipelineActivity.Status.SUCCESS).count(),
-                'failed': insight_extraction.filter(status=PipelineActivity.Status.FAILED).count(),
-            },
+            'supabase_syncs': count_by_final_outcome(supabase_syncs),
+            'insight_extraction': count_by_final_outcome(insight_extraction),
             'emails': {
                 'success': emails.filter(status=PipelineActivity.Status.SUCCESS).count(),
                 'failed': emails.filter(status=PipelineActivity.Status.FAILED).count(),

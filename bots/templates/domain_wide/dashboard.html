@@ -1055,6 +1055,72 @@
                     <div id="email-list" style="font-size: 13px; max-height: 200px; overflow-y: auto;"></div>
                 </div>
             </div>
+
+            <!-- Meeting Sync Pipeline -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Meeting Sync Pipeline</h2>
+                    <span class="badge badge-info">Today</span>
+                </div>
+                <div class="processing-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="processing-col">
+                        <h4>Ended Bots</h4>
+                        <div class="processing-metric">
+                            <span>Total</span>
+                            <span class="value" id="sync-ended-total">--</span>
+                        </div>
+                    </div>
+                    <div class="processing-col">
+                        <h4>Recording</h4>
+                        <div class="processing-metric">
+                            <span>Complete</span>
+                            <span class="value" id="sync-rec-complete">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>In Progress</span>
+                            <span class="value" id="sync-rec-in-progress">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed</span>
+                            <span class="value error" id="sync-rec-failed">--</span>
+                        </div>
+                    </div>
+                    <div class="processing-col">
+                        <h4>Transcription</h4>
+                        <div class="processing-metric">
+                            <span>Complete</span>
+                            <span class="value" id="sync-trans-complete">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>In Progress</span>
+                            <span class="value" id="sync-trans-in-progress">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed</span>
+                            <span class="value error" id="sync-trans-failed">--</span>
+                        </div>
+                    </div>
+                    <div class="processing-col">
+                        <h4>Supabase Sync</h4>
+                        <div class="processing-metric">
+                            <span>Complete</span>
+                            <span class="value" id="sync-supa-complete">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Pending</span>
+                            <span class="value" id="sync-supa-pending">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Not Created</span>
+                            <span class="value error" id="sync-supa-not-created">--</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Stuck meetings warning -->
+                <div id="sync-stuck-warning" style="display: none; margin-top: 12px; padding: 10px 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; font-size: 13px;">
+                    <strong>⚠️ Stuck Meetings:</strong> <span id="sync-stuck-count">0</span> meetings have completed transcription but are still pending Supabase sync.
+                </div>
+            </div>
         </div>
 
         <!-- Infrastructure Status -->
@@ -1264,6 +1330,7 @@
                 loadResourceSummary(),
                 loadProcessingPipeline(),
                 loadPipelineActivity(),
+                loadMeetingSyncStatus(),
                 loadInfrastructure()
             ]);
         }
@@ -1460,6 +1527,50 @@
                     ${e.error ? `<div style="color: #dc3545; font-size: 11px;">${e.error}</div>` : ''}
                 </div>`;
             }).join('');
+        }
+
+        // Meeting Sync Pipeline
+        async function loadMeetingSyncStatus() {
+            try {
+                const data = await fetch('/dashboard/api/meeting-sync-status/').then(r => r.json());
+
+                // Ended bots
+                document.getElementById('sync-ended-total').textContent = data.total_ended_bots ?? '--';
+
+                // Recording states
+                document.getElementById('sync-rec-complete').textContent = data.recording_states?.complete ?? '--';
+                document.getElementById('sync-rec-in-progress').textContent = data.recording_states?.in_progress ?? '--';
+                document.getElementById('sync-rec-failed').textContent = data.recording_states?.failed ?? '--';
+
+                // Transcription states
+                document.getElementById('sync-trans-complete').textContent = data.transcription_states?.complete ?? '--';
+                document.getElementById('sync-trans-in-progress').textContent = data.transcription_states?.in_progress ?? '--';
+                document.getElementById('sync-trans-failed').textContent = data.transcription_states?.failed ?? '--';
+
+                // Supabase sync
+                if (data.supabase_sync?.available) {
+                    document.getElementById('sync-supa-complete').textContent = data.supabase_sync?.complete ?? '--';
+                    document.getElementById('sync-supa-pending').textContent = data.supabase_sync?.pending ?? '--';
+                    document.getElementById('sync-supa-not-created').textContent = data.supabase_sync?.not_created ?? '--';
+                } else {
+                    document.getElementById('sync-supa-complete').textContent = 'N/A';
+                    document.getElementById('sync-supa-pending').textContent = 'N/A';
+                    document.getElementById('sync-supa-not-created').textContent = 'N/A';
+                }
+
+                // Stuck meetings warning
+                const stuckCount = data.stuck_meetings ?? 0;
+                const stuckWarning = document.getElementById('sync-stuck-warning');
+                if (stuckCount > 0) {
+                    document.getElementById('sync-stuck-count').textContent = stuckCount;
+                    stuckWarning.style.display = 'block';
+                } else {
+                    stuckWarning.style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error('Failed to load meeting sync status:', error);
+            }
         }
 
         async function loadSummary() {

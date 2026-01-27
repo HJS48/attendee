@@ -9,7 +9,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 from django.conf import settings
 
-from bots.models import CalendarEvent, Bot, BotStates, Credentials
+from bots.models import CalendarEvent, Bot, BotStates, Credentials, Recording, RecordingTranscriptionStates
 from bots.bots_api_utils import create_bot, BotCreationSource
 
 logger = logging.getLogger(__name__)
@@ -152,14 +152,20 @@ def handle_event_deletion(sender, instance, **kwargs):
 
 
 # =============================================================================
-# Supabase Sync on Bot End
+# Phase 1: Create Meeting Metadata on Bot End
 # =============================================================================
 
 @receiver(post_save, sender=Bot)
-def sync_meeting_to_supabase_on_end(sender, instance, **kwargs):
-    """Sync meeting data to Supabase when bot reaches ENDED state."""
+def create_meeting_on_bot_end(sender, instance, **kwargs):
+    """
+    Phase 1: Create meeting metadata in Supabase when bot reaches ENDED state.
 
-    # Only sync when bot has ended (not for other state changes)
+    This creates the meeting row with metadata (title, URL, timestamps) but
+    sets transcript_status='pending'. The transcript will be synced separately
+    when Recording.transcription_state → COMPLETE (see Phase 2 below).
+    """
+
+    # Only trigger when bot has ended (not for other state changes)
     if instance.state != BotStates.ENDED:
         return
 
@@ -169,10 +175,82 @@ def sync_meeting_to_supabase_on_end(sender, instance, **kwargs):
 
     # Queue async task to avoid blocking (routes to K8s or Celery)
     try:
-        from .tasks import enqueue_sync_meeting_to_supabase_task
-        enqueue_sync_meeting_to_supabase_task(str(instance.object_id))
-        logger.debug(f"Queued Supabase sync for bot {instance.object_id}")
+        from .tasks import enqueue_create_meeting_metadata_task
+        enqueue_create_meeting_metadata_task(str(instance.object_id))
+        logger.debug(f"Queued meeting metadata creation for bot {instance.object_id}")
     except ImportError:
-        logger.warning("enqueue_sync_meeting_to_supabase_task not found, skipping Supabase sync")
+        logger.warning("enqueue_create_meeting_metadata_task not found, skipping Phase 1")
     except Exception as e:
-        logger.exception(f"Failed to queue Supabase sync for bot {instance.object_id}: {e}")
+        logger.exception(f"Failed to queue meeting metadata creation for bot {instance.object_id}: {e}")
+
+
+# =============================================================================
+# Phase 2: Sync Transcript on Recording Transcription Complete
+# =============================================================================
+
+@receiver(pre_save, sender=Recording)
+def track_transcription_state_change(sender, instance, **kwargs):
+    """
+    Track transcription_state changes before save.
+
+    Stores old transcription_state on the instance so post_save can detect transitions.
+    """
+    if not instance.pk:
+        # New instance, no previous state
+        instance._old_transcription_state = None
+        return
+
+    try:
+        old_instance = Recording.objects.get(pk=instance.pk)
+        instance._old_transcription_state = old_instance.transcription_state
+    except Recording.DoesNotExist:
+        instance._old_transcription_state = None
+
+
+@receiver(post_save, sender=Recording)
+def sync_transcript_on_transcription_complete(sender, instance, **kwargs):
+    """
+    Phase 2: Sync transcript to Supabase when transcription completes.
+
+    Triggers when Recording.transcription_state transitions TO COMPLETE or FAILED.
+    This ensures we only sync transcript after it's fully ready, preventing the
+    race condition where bot ENDED fires before transcription is done.
+    """
+    old_state = getattr(instance, '_old_transcription_state', None)
+    new_state = instance.transcription_state
+
+    # Only act on state transitions
+    if old_state == new_state:
+        return
+
+    # Get the bot for this recording
+    bot = instance.bot
+    if not bot or not bot.meeting_url:
+        return
+
+    # Only trigger for bots that have ended (to avoid premature syncs)
+    if bot.state != BotStates.ENDED:
+        logger.debug(f"Skipping transcript sync for recording {instance.pk} - bot {bot.object_id} not ended yet")
+        return
+
+    # Transcription completed → sync transcript (Phase 2)
+    if new_state == RecordingTranscriptionStates.COMPLETE:
+        try:
+            from .tasks import enqueue_sync_transcript_task
+            enqueue_sync_transcript_task(str(bot.object_id))
+            logger.info(f"Queued transcript sync for bot {bot.object_id} (transcription complete)")
+        except ImportError:
+            logger.warning("enqueue_sync_transcript_task not found, skipping Phase 2")
+        except Exception as e:
+            logger.exception(f"Failed to queue transcript sync for bot {bot.object_id}: {e}")
+
+    # Transcription failed → mark as failed
+    elif new_state == RecordingTranscriptionStates.FAILED:
+        try:
+            from .tasks import enqueue_mark_transcript_failed_task
+            enqueue_mark_transcript_failed_task(str(bot.object_id))
+            logger.info(f"Queued transcript failed marking for bot {bot.object_id}")
+        except ImportError:
+            logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
+        except Exception as e:
+            logger.exception(f"Failed to queue transcript failed marking for bot {bot.object_id}: {e}")

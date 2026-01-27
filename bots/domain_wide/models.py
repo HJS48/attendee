@@ -98,6 +98,8 @@ class PipelineActivity(models.Model):
         SUPABASE_SYNC = 'supabase_sync', 'Supabase Sync'
         INSIGHT_EXTRACTION = 'insight_extraction', 'Insight Extraction'
         EMAIL_SENT = 'email_sent', 'Email Sent'
+        MEETING_CREATED = 'meeting_created', 'Meeting Created'
+        TRANSCRIPT_SYNCED = 'transcript_synced', 'Transcript Synced'
 
     class Status(models.TextChoices):
         SUCCESS = 'success', 'Success'

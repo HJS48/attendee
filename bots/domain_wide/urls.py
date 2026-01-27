@@ -22,6 +22,7 @@ urlpatterns = [
     path('api/processing-pipeline/', views.ProcessingPipelineAPI.as_view(), name='api-processing-pipeline'),
     path('api/pipeline-activity/', views.PipelineActivityAPI.as_view(), name='api-pipeline-activity'),
     path('api/external-integrations/', views.ExternalIntegrationsAPI.as_view(), name='api-external-integrations'),
+    path('api/meeting-sync-status/', views.MeetingSyncStatusAPI.as_view(), name='api-meeting-sync-status'),
 
     # Kubernetes APIs
     path('api/k8s/pods/', views.KubernetesPodsAPI.as_view(), name='api-k8s-pods'),

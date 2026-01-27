@@ -1,28 +1,32 @@
+# Transcript Sync CronJob
+# Defensive cron job that catches transcriptions that missed the event-driven signal.
+# Runs every 15 minutes to find recordings with completed transcription
+# that haven't been synced to Supabase yet.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: bot-cleanup
+  name: transcript-sync
   namespace: attendee
 spec:
-  schedule: "*/5 * * * *"  # Every 5 minutes
+  schedule: "*/15 * * * *"  # Every 15 minutes
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 300
+      activeDeadlineSeconds: 600  # 10 minute timeout
       template:
         spec:
           serviceAccountName: attendee-bot-creator
           restartPolicy: OnFailure
           containers:
-          - name: cleanup
+          - name: transcript-sync
             image: ghcr.io/hjs48/attendee:latest
             imagePullPolicy: IfNotPresent
             command:
               - /bin/sh
               - -c
-              - "python manage.py clean_up_bots_with_heartbeat_timeout_or_that_never_launched && python manage.py clean_up_completed_bot_pods"
+              - "python manage.py sync_stuck_transcripts"
             envFrom:
               - configMapRef:
                   name: env

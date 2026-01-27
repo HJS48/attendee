@@ -12,6 +12,8 @@ resources:
   - scheduler-deployment.yaml
   - worker-deployment.yaml
   - ingress.yaml
+  - cleanup-cronjob.yaml
+  - transcript-sync-cronjob.yaml
 
 # Common labels for all resources
 commonLabels:
