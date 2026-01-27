@@ -117,22 +117,30 @@ def upsert_meeting_insights(meeting_id: str, summary: str = None, action_items: 
 
     Uses meeting_id as the conflict key for upsert.
     """
+    from datetime import datetime
+
     client = get_supabase_client()
     if not client:
+        logger.error("Supabase client not available for insights upsert")
         return None
 
     insights_data = {'meeting_id': meeting_id}
-    if summary:
+    if summary is not None:
         insights_data['summary'] = summary
-    if action_items:
-        insights_data['action_items'] = action_items
+    if action_items is not None:
+        # Store with extraction timestamp (matches edge function format)
+        insights_data['action_items'] = {
+            'items': action_items,
+            'extracted_at': datetime.utcnow().isoformat()
+        }
 
     try:
         result = client.table('meeting_insights').upsert(
             insights_data,
             on_conflict='meeting_id'
         ).execute()
+        logger.info(f"Upserted insights for meeting {meeting_id}")
         return result.data[0] if result.data else None
     except Exception as e:
-        logger.exception(f"Failed to upsert meeting insights: {e}")
+        logger.exception(f"Failed to upsert meeting insights for {meeting_id}: {e}")
         return None

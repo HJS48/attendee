@@ -234,11 +234,37 @@ def _sync_meeting_to_supabase_impl(bot_id: str):
 
     # Upsert to Supabase
     result = upsert_meeting(meeting_data)
+    meeting_title = meeting_data.get('title', '')
+
+    # Log pipeline activity
+    from bots.domain_wide.models import PipelineActivity
     if result:
         logger.info(f"Synced meeting to Supabase for bot {bot_id}: {len(transcript_segments if 'transcript_segments' in dir() else [])} utterances")
-        return {'status': 'success', 'meeting_id': result.get('id')}
+        PipelineActivity.log(
+            event_type=PipelineActivity.EventType.SUPABASE_SYNC,
+            status=PipelineActivity.Status.SUCCESS,
+            bot_id=bot_id,
+            meeting_id=result.get('id', ''),
+            meeting_title=meeting_title,
+        )
+
+        # Chain: Extract insights from transcript
+        meeting_id = result.get('id', '')
+        if meeting_id:
+            from bots.tasks.extract_meeting_insights_task import enqueue_extract_meeting_insights_task
+            enqueue_extract_meeting_insights_task(meeting_id, bot_id)
+            logger.info(f"Queued insight extraction for meeting {meeting_id}")
+
+        return {'status': 'success', 'meeting_id': meeting_id}
     else:
         logger.warning(f"Failed to sync meeting to Supabase for bot {bot_id}")
+        PipelineActivity.log(
+            event_type=PipelineActivity.EventType.SUPABASE_SYNC,
+            status=PipelineActivity.Status.FAILED,
+            bot_id=bot_id,
+            meeting_title=meeting_title,
+            error='upsert failed',
+        )
         return {'status': 'error', 'reason': 'upsert failed'}
 
 

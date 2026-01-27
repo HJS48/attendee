@@ -991,7 +991,7 @@
                         </div>
                     </div>
                     <div class="processing-col">
-                        <h4>Async Jobs</h4>
+                        <h4>Transcription Queue</h4>
                         <div class="processing-metric">
                             <span>Not Started</span>
                             <span class="value" id="proc-async-not-started">--</span>
@@ -1008,56 +1008,51 @@
                 </div>
             </div>
 
-            <!-- External Integrations -->
+            <!-- Pipeline Activity -->
             <div class="card">
                 <div class="card-header">
-                    <h2>External Integrations</h2>
+                    <h2>Pipeline Activity</h2>
+                    <span class="badge badge-info">Today</span>
                 </div>
-                <div class="integrations-grid">
-                    <div class="integration-col">
-                        <h4>Zoom OAuth</h4>
+                <div class="processing-grid" style="grid-template-columns: repeat(3, 1fr);">
+                    <div class="processing-col">
+                        <h4>Supabase Syncs</h4>
                         <div class="processing-metric">
-                            <span>Connected</span>
-                            <span class="value" id="int-zoom-connected">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Disconnected</span>
-                            <span class="value error" id="int-zoom-disconnected">--</span>
-                        </div>
-                    </div>
-                    <div class="integration-col">
-                        <h4>Google OAuth</h4>
-                        <div class="processing-metric">
-                            <span>Valid</span>
-                            <span class="value" id="int-google-valid">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Expired</span>
-                            <span class="value error" id="int-google-expired">--</span>
-                        </div>
-                    </div>
-                    <div class="integration-col">
-                        <h4>Microsoft OAuth</h4>
-                        <div class="processing-metric">
-                            <span>Valid</span>
-                            <span class="value" id="int-ms-valid">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Expired</span>
-                            <span class="value error" id="int-ms-expired">--</span>
-                        </div>
-                    </div>
-                    <div class="integration-col">
-                        <h4>Webhooks (24h)</h4>
-                        <div class="processing-metric">
-                            <span>Success Rate</span>
-                            <span class="value" id="int-webhook-rate">--</span>
+                            <span>Success</span>
+                            <span class="value" id="pipe-sync-success">--</span>
                         </div>
                         <div class="processing-metric">
                             <span>Failed</span>
-                            <span class="value error" id="int-webhook-failed">--</span>
+                            <span class="value error" id="pipe-sync-failed">--</span>
                         </div>
                     </div>
+                    <div class="processing-col">
+                        <h4>Insight Extraction</h4>
+                        <div class="processing-metric">
+                            <span>Success</span>
+                            <span class="value" id="pipe-insights-success">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed</span>
+                            <span class="value error" id="pipe-insights-failed">--</span>
+                        </div>
+                    </div>
+                    <div class="processing-col">
+                        <h4>Emails Sent</h4>
+                        <div class="processing-metric">
+                            <span>Success</span>
+                            <span class="value" id="pipe-email-success" style="cursor: pointer; text-decoration: underline;" onclick="toggleEmailDetails()">--</span>
+                        </div>
+                        <div class="processing-metric">
+                            <span>Failed</span>
+                            <span class="value error" id="pipe-email-failed">--</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Email Details (hidden by default) -->
+                <div id="email-details" style="display: none; margin-top: 12px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
+                    <h4 style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">Recent Emails</h4>
+                    <div id="email-list" style="font-size: 13px; max-height: 200px; overflow-y: auto;"></div>
                 </div>
             </div>
         </div>
@@ -1268,7 +1263,7 @@
                 loadCalendarSync(),
                 loadResourceSummary(),
                 loadProcessingPipeline(),
-                loadExternalIntegrations(),
+                loadPipelineActivity(),
                 loadInfrastructure()
             ]);
         }
@@ -1404,7 +1399,7 @@
                     reasonsDiv.style.display = 'none';
                 }
 
-                // Async jobs
+                // Transcription Queue
                 document.getElementById('proc-async-not-started').textContent = data.async_transcriptions?.not_started ?? '--';
                 document.getElementById('proc-async-in-progress').textContent = data.async_transcriptions?.in_progress ?? '--';
                 document.getElementById('proc-async-failed').textContent = data.async_transcriptions?.failed_today ?? '--';
@@ -1414,30 +1409,57 @@
             }
         }
 
-        // External Integrations
-        async function loadExternalIntegrations() {
+        // Pipeline Activity
+        let pipelineActivityData = null;
+
+        async function loadPipelineActivity() {
             try {
-                const data = await fetch('/dashboard/api/external-integrations/').then(r => r.json());
+                const data = await fetch('/dashboard/api/pipeline-activity/').then(r => r.json());
+                pipelineActivityData = data;
 
-                // Zoom OAuth
-                document.getElementById('int-zoom-connected').textContent = data.oauth?.zoom?.connected ?? '--';
-                document.getElementById('int-zoom-disconnected').textContent = data.oauth?.zoom?.disconnected ?? '--';
+                // Supabase Syncs
+                document.getElementById('pipe-sync-success').textContent = data.supabase_syncs?.success ?? '--';
+                document.getElementById('pipe-sync-failed').textContent = data.supabase_syncs?.failed ?? '--';
 
-                // Google OAuth
-                document.getElementById('int-google-valid').textContent = data.oauth?.google?.valid ?? '--';
-                document.getElementById('int-google-expired').textContent = data.oauth?.google?.expired ?? '--';
+                // Insight Extraction
+                document.getElementById('pipe-insights-success').textContent = data.insight_extraction?.success ?? '--';
+                document.getElementById('pipe-insights-failed').textContent = data.insight_extraction?.failed ?? '--';
 
-                // Microsoft OAuth
-                document.getElementById('int-ms-valid').textContent = data.oauth?.microsoft?.valid ?? '--';
-                document.getElementById('int-ms-expired').textContent = data.oauth?.microsoft?.expired ?? '--';
+                // Emails
+                document.getElementById('pipe-email-success').textContent = data.emails?.success ?? '--';
+                document.getElementById('pipe-email-failed').textContent = data.emails?.failed ?? '--';
 
-                // Webhooks
-                document.getElementById('int-webhook-rate').textContent = (data.webhooks?.success_rate_24h ?? '--') + '%';
-                document.getElementById('int-webhook-failed').textContent = data.webhooks?.failed_24h ?? '--';
+                // Update email list
+                updateEmailList(data.emails?.recent || []);
 
             } catch (error) {
-                console.error('Failed to load external integrations:', error);
+                console.error('Failed to load pipeline activity:', error);
             }
+        }
+
+        function toggleEmailDetails() {
+            const details = document.getElementById('email-details');
+            details.style.display = details.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function updateEmailList(emails) {
+            const list = document.getElementById('email-list');
+            if (!emails.length) {
+                list.innerHTML = '<div style="color: #666;">No emails sent today</div>';
+                return;
+            }
+            list.innerHTML = emails.map(e => {
+                const time = new Date(e.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const status = e.status === 'success'
+                    ? '<span style="color: #10b981;">✓</span>'
+                    : '<span style="color: #dc3545;">✗</span>';
+                const title = e.meeting_title || 'Untitled';
+                return `<div style="padding: 4px 0; border-bottom: 1px solid #eee;">
+                    ${status} <strong>${e.recipient}</strong>
+                    <span style="color: #666; font-size: 11px;"> - ${title} @ ${time}</span>
+                    ${e.error ? `<div style="color: #dc3545; font-size: 11px;">${e.error}</div>` : ''}
+                </div>`;
+            }).join('');
         }
 
         async function loadSummary() {

@@ -81,6 +81,16 @@ def notify_meeting(request):
 
     logger.info(f"Received notify-meeting for {meeting_id} with {len(action_items)} action items")
 
+    # Log pipeline activity - meeting insights received
+    from bots.domain_wide.models import PipelineActivity
+    meeting_title = data.get('meeting_title', '')
+    PipelineActivity.log(
+        event_type=PipelineActivity.EventType.MEETING_INSIGHTS,
+        status=PipelineActivity.Status.SUCCESS,
+        meeting_id=meeting_id,
+        meeting_title=meeting_title,
+    )
+
     # Queue the email task
     try:
         enqueue_send_transcript_email_task(meeting_id, summary, action_items)

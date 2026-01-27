@@ -87,3 +87,49 @@ class OAuthCredential(models.Model):
         if not self.token_expiry:
             return True
         return timezone.now() > self.token_expiry
+
+
+class PipelineActivity(models.Model):
+    """
+    Track pipeline events for dashboard visibility.
+    Verifies transcript→sync→insights→email pipeline is working.
+    """
+    class EventType(models.TextChoices):
+        SUPABASE_SYNC = 'supabase_sync', 'Supabase Sync'
+        INSIGHT_EXTRACTION = 'insight_extraction', 'Insight Extraction'
+        EMAIL_SENT = 'email_sent', 'Email Sent'
+
+    class Status(models.TextChoices):
+        SUCCESS = 'success', 'Success'
+        FAILED = 'failed', 'Failed'
+
+    event_type = models.CharField(max_length=32, choices=EventType.choices, db_index=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.SUCCESS)
+    bot_id = models.CharField(max_length=64, blank=True, db_index=True)
+    meeting_id = models.CharField(max_length=64, blank=True, db_index=True)
+    meeting_title = models.CharField(max_length=255, blank=True)
+    recipient = models.EmailField(blank=True)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        app_label = 'domain_wide'
+        verbose_name = 'Pipeline Activity'
+        verbose_name_plural = 'Pipeline Activities'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_event_type_display()} - {self.status} @ {self.created_at.strftime('%H:%M')}"
+
+    @classmethod
+    def log(cls, event_type, status='success', bot_id='', meeting_id='', meeting_title='', recipient='', error=''):
+        """Log a pipeline event."""
+        return cls.objects.create(
+            event_type=event_type,
+            status=status,
+            bot_id=bot_id,
+            meeting_id=meeting_id,
+            meeting_title=meeting_title,
+            recipient=recipient,
+            error=error,
+        )

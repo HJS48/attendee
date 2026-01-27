@@ -2685,6 +2685,50 @@ class ProcessingPipelineAPI(View):
         return JsonResponse(pipeline)
 
 
+class PipelineActivityAPI(View):
+    """API for pipeline activity - Supabase syncs, insights, emails."""
+
+    def get(self, request):
+        from .models import PipelineActivity
+
+        today = timezone.now().date()
+
+        # Get today's counts by event type
+        today_activities = PipelineActivity.objects.filter(created_at__date=today)
+
+        supabase_syncs = today_activities.filter(
+            event_type=PipelineActivity.EventType.SUPABASE_SYNC
+        )
+        insight_extraction = today_activities.filter(
+            event_type=PipelineActivity.EventType.INSIGHT_EXTRACTION
+        )
+        emails = today_activities.filter(
+            event_type=PipelineActivity.EventType.EMAIL_SENT
+        )
+
+        # Get recent email details (last 20)
+        recent_emails = emails.order_by('-created_at')[:20].values(
+            'recipient', 'meeting_title', 'meeting_id', 'status', 'error', 'created_at'
+        )
+
+        return JsonResponse({
+            'supabase_syncs': {
+                'success': supabase_syncs.filter(status=PipelineActivity.Status.SUCCESS).count(),
+                'failed': supabase_syncs.filter(status=PipelineActivity.Status.FAILED).count(),
+            },
+            'insight_extraction': {
+                'success': insight_extraction.filter(status=PipelineActivity.Status.SUCCESS).count(),
+                'failed': insight_extraction.filter(status=PipelineActivity.Status.FAILED).count(),
+            },
+            'emails': {
+                'success': emails.filter(status=PipelineActivity.Status.SUCCESS).count(),
+                'failed': emails.filter(status=PipelineActivity.Status.FAILED).count(),
+                'recent': list(recent_emails),
+            },
+            'timestamp': timezone.now().isoformat()
+        })
+
+
 class ExternalIntegrationsAPI(View):
     """API for external integrations status - OAuth and webhooks."""
 

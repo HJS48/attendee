@@ -100,3 +100,4 @@ jsonpatch==1.33
 jsonpointer==3.0.0
 docker==7.1.0
 supabase==2.10.0
+anthropic==0.40.0

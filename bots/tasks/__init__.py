@@ -8,6 +8,7 @@ from .restart_bot_pod_task import restart_bot_pod
 from .run_bot_task import run_bot
 from .send_slack_alert_task import send_slack_alert
 from .send_transcript_email_task import send_transcript_email
+from .extract_meeting_insights_task import extract_meeting_insights
 from .sync_calendar_task import sync_calendar
 from .sync_zoom_oauth_connection_task import sync_zoom_oauth_connection
 from .validate_zoom_oauth_connections_task import validate_zoom_oauth_connections
@@ -27,4 +28,5 @@ __all__ = [
     "validate_zoom_oauth_connections",
     "send_slack_alert",
     "send_transcript_email",
+    "extract_meeting_insights",
 ]

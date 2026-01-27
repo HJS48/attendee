@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/system-health/', views.SystemHealthAPI.as_view(), name='api-system-health'),
     path('api/active-issues/', views.ActiveIssuesAPI.as_view(), name='api-active-issues'),
     path('api/processing-pipeline/', views.ProcessingPipelineAPI.as_view(), name='api-processing-pipeline'),
+    path('api/pipeline-activity/', views.PipelineActivityAPI.as_view(), name='api-pipeline-activity'),
     path('api/external-integrations/', views.ExternalIntegrationsAPI.as_view(), name='api-external-integrations'),
 
     # Kubernetes APIs

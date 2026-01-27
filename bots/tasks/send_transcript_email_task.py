@@ -287,6 +287,11 @@ def send_transcript_email_sync(meeting_id: str, summary: str, action_items: list
         server.login(smtp_config['user'], smtp_config['password'])
 
         sent_count = 0
+        meeting_title = meeting.get('title', 'Untitled Meeting')
+
+        # Import for pipeline logging
+        from bots.domain_wide.models import PipelineActivity
+
         for recipient in recipients:
             try:
                 # Generate personalized token
@@ -295,7 +300,7 @@ def send_transcript_email_sync(meeting_id: str, summary: str, action_items: list
 
                 # Build email
                 msg = MIMEMultipart('alternative')
-                msg['Subject'] = f"Meeting Summary: {meeting.get('title', 'Untitled Meeting')}"
+                msg['Subject'] = f"Meeting Summary: {meeting_title}"
                 msg['From'] = smtp_config['from_email']
                 msg['To'] = recipient
 
@@ -309,8 +314,26 @@ def send_transcript_email_sync(meeting_id: str, summary: str, action_items: list
                 sent_count += 1
                 logger.info(f"Sent transcript email to {recipient}")
 
+                # Log success
+                PipelineActivity.log(
+                    event_type=PipelineActivity.EventType.EMAIL_SENT,
+                    status=PipelineActivity.Status.SUCCESS,
+                    meeting_id=meeting_id,
+                    meeting_title=meeting_title,
+                    recipient=recipient,
+                )
+
             except Exception as e:
                 logger.error(f"Failed to send email to {recipient}: {e}")
+                # Log failure
+                PipelineActivity.log(
+                    event_type=PipelineActivity.EventType.EMAIL_SENT,
+                    status=PipelineActivity.Status.FAILED,
+                    meeting_id=meeting_id,
+                    meeting_title=meeting_title,
+                    recipient=recipient,
+                    error=str(e),
+                )
 
         server.quit()
         logger.info(f"Sent {sent_count}/{len(recipients)} transcript emails for meeting {meeting_id}")
