@@ -938,188 +938,112 @@
             </div>
         </div>
 
-        <!-- Two Column Layout: Processing Pipeline + External Integrations -->
-        <div class="two-column-grid">
-            <!-- Processing Pipeline -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Processing Pipeline</h2>
+        <!-- Meeting Sync Pipeline (Full Width) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Meeting Sync Pipeline</h2>
+                <span class="badge badge-info">Today</span>
+            </div>
+            <div class="processing-grid" style="grid-template-columns: repeat(6, 1fr);">
+                <div class="processing-col">
+                    <h4>Ended Bots</h4>
+                    <div class="processing-metric">
+                        <span>Total</span>
+                        <span class="value" id="sync-ended-total">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>&nbsp;</span>
+                        <span class="value">&nbsp;</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>&nbsp;</span>
+                        <span class="value">&nbsp;</span>
+                    </div>
                 </div>
-                <div class="processing-grid" style="grid-template-columns: repeat(4, 1fr);">
-                    <div class="processing-col">
-                        <h4>Recordings</h4>
-                        <div class="processing-metric">
-                            <span>In Progress</span>
-                            <span class="value" id="proc-rec-in-progress">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Completed Today</span>
-                            <span class="value" id="proc-rec-completed">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed Today</span>
-                            <span class="value error" id="proc-rec-failed">--</span>
-                        </div>
+                <div class="processing-col">
+                    <h4>Recording</h4>
+                    <div class="processing-metric">
+                        <span>Complete</span>
+                        <span class="value" id="sync-rec-complete">--</span>
                     </div>
-                    <div class="processing-col">
-                        <h4>Transcriptions</h4>
-                        <div class="processing-metric">
-                            <span>In Progress</span>
-                            <span class="value" id="proc-trans-in-progress">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Pending</span>
-                            <span class="value warning" id="proc-trans-pending">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed Today</span>
-                            <span class="value error" id="proc-trans-failed">--</span>
-                        </div>
+                    <div class="processing-metric">
+                        <span>In Progress</span>
+                        <span class="value" id="sync-rec-in-progress">--</span>
                     </div>
-                    <div class="processing-col">
-                        <h4>DeepGram</h4>
-                        <div class="processing-metric">
-                            <span>Completed Today</span>
-                            <span class="value" id="proc-dg-completed">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed (24h)</span>
-                            <span class="value error" id="proc-dg-failed">--</span>
-                        </div>
-                        <div class="processing-metric" id="proc-dg-failure-reasons" style="display: none;">
-                            <span class="value error" style="font-size: 11px;"></span>
-                        </div>
+                    <div class="processing-metric">
+                        <span>Failed</span>
+                        <span class="value error" id="sync-rec-failed">--</span>
                     </div>
-                    <div class="processing-col">
-                        <h4>Transcription Queue</h4>
-                        <div class="processing-metric">
-                            <span>Not Started</span>
-                            <span class="value" id="proc-async-not-started">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>In Progress</span>
-                            <span class="value" id="proc-async-in-progress">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed Today</span>
-                            <span class="value error" id="proc-async-failed">--</span>
-                        </div>
+                </div>
+                <div class="processing-col">
+                    <h4>Transcription</h4>
+                    <div class="processing-metric">
+                        <span>Complete</span>
+                        <span class="value" id="sync-trans-complete">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>In Progress</span>
+                        <span class="value" id="sync-trans-in-progress">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>Failed</span>
+                        <span class="value error" id="sync-trans-failed">--</span>
+                    </div>
+                </div>
+                <div class="processing-col">
+                    <h4>Supabase Sync</h4>
+                    <div class="processing-metric">
+                        <span>Complete</span>
+                        <span class="value" id="sync-supa-complete">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>Pending</span>
+                        <span class="value" id="sync-supa-pending">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>Not Created</span>
+                        <span class="value error" id="sync-supa-not-created">--</span>
+                    </div>
+                </div>
+                <div class="processing-col">
+                    <h4>Insights</h4>
+                    <div class="processing-metric">
+                        <span>Success</span>
+                        <span class="value" id="sync-insights-success">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>Pending</span>
+                        <span class="value" id="sync-insights-pending">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>Failed</span>
+                        <span class="value error" id="sync-insights-failed">--</span>
+                    </div>
+                </div>
+                <div class="processing-col">
+                    <h4>Emails</h4>
+                    <div class="processing-metric">
+                        <span>Success</span>
+                        <span class="value" id="sync-email-success" style="cursor: pointer; text-decoration: underline;" onclick="toggleEmailDetails()">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>Pending</span>
+                        <span class="value" id="sync-email-pending">--</span>
+                    </div>
+                    <div class="processing-metric">
+                        <span>Failed</span>
+                        <span class="value error" id="sync-email-failed">--</span>
                     </div>
                 </div>
             </div>
-
-            <!-- Pipeline Activity -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Pipeline Activity</h2>
-                    <span class="badge badge-info">Today</span>
-                </div>
-                <div class="processing-grid" style="grid-template-columns: repeat(3, 1fr);">
-                    <div class="processing-col">
-                        <h4>Supabase Syncs</h4>
-                        <div class="processing-metric">
-                            <span>Success</span>
-                            <span class="value" id="pipe-sync-success">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed</span>
-                            <span class="value error" id="pipe-sync-failed">--</span>
-                        </div>
-                    </div>
-                    <div class="processing-col">
-                        <h4>Insight Extraction</h4>
-                        <div class="processing-metric">
-                            <span>Success</span>
-                            <span class="value" id="pipe-insights-success">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed</span>
-                            <span class="value error" id="pipe-insights-failed">--</span>
-                        </div>
-                    </div>
-                    <div class="processing-col">
-                        <h4>Emails Sent</h4>
-                        <div class="processing-metric">
-                            <span>Success</span>
-                            <span class="value" id="pipe-email-success" style="cursor: pointer; text-decoration: underline;" onclick="toggleEmailDetails()">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed</span>
-                            <span class="value error" id="pipe-email-failed">--</span>
-                        </div>
-                    </div>
-                </div>
-                <!-- Email Details (hidden by default) -->
-                <div id="email-details" style="display: none; margin-top: 12px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
-                    <h4 style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">Recent Emails</h4>
-                    <div id="email-list" style="font-size: 13px; max-height: 200px; overflow-y: auto;"></div>
-                </div>
+            <!-- Email Details (hidden by default) -->
+            <div id="email-details" style="display: none; margin-top: 12px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
+                <h4 style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">Recent Emails</h4>
+                <div id="email-list" style="font-size: 13px; max-height: 200px; overflow-y: auto;"></div>
             </div>
-
-            <!-- Meeting Sync Pipeline -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Meeting Sync Pipeline</h2>
-                    <span class="badge badge-info">Today</span>
-                </div>
-                <div class="processing-grid" style="grid-template-columns: repeat(4, 1fr);">
-                    <div class="processing-col">
-                        <h4>Ended Bots</h4>
-                        <div class="processing-metric">
-                            <span>Total</span>
-                            <span class="value" id="sync-ended-total">--</span>
-                        </div>
-                    </div>
-                    <div class="processing-col">
-                        <h4>Recording</h4>
-                        <div class="processing-metric">
-                            <span>Complete</span>
-                            <span class="value" id="sync-rec-complete">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>In Progress</span>
-                            <span class="value" id="sync-rec-in-progress">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed</span>
-                            <span class="value error" id="sync-rec-failed">--</span>
-                        </div>
-                    </div>
-                    <div class="processing-col">
-                        <h4>Transcription</h4>
-                        <div class="processing-metric">
-                            <span>Complete</span>
-                            <span class="value" id="sync-trans-complete">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>In Progress</span>
-                            <span class="value" id="sync-trans-in-progress">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Failed</span>
-                            <span class="value error" id="sync-trans-failed">--</span>
-                        </div>
-                    </div>
-                    <div class="processing-col">
-                        <h4>Supabase Sync</h4>
-                        <div class="processing-metric">
-                            <span>Complete</span>
-                            <span class="value" id="sync-supa-complete">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Pending</span>
-                            <span class="value" id="sync-supa-pending">--</span>
-                        </div>
-                        <div class="processing-metric">
-                            <span>Not Created</span>
-                            <span class="value error" id="sync-supa-not-created">--</span>
-                        </div>
-                    </div>
-                </div>
-                <!-- Stuck meetings warning -->
-                <div id="sync-stuck-warning" style="display: none; margin-top: 12px; padding: 10px 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; font-size: 13px;">
-                    <strong>⚠️ Stuck Meetings:</strong> <span id="sync-stuck-count">0</span> meetings have completed transcription but are still pending Supabase sync.
-                </div>
+            <!-- Stuck meetings warning -->
+            <div id="sync-stuck-warning" style="display: none; margin-top: 12px; padding: 10px 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; font-size: 13px;">
+                <strong>Warning:</strong> <span id="sync-stuck-count">0</span> meetings have completed transcription but are still pending Supabase sync.
             </div>
         </div>
 
@@ -1328,8 +1252,6 @@
                 loadFailures(),
                 loadCalendarSync(),
                 loadResourceSummary(),
-                loadProcessingPipeline(),
-                loadPipelineActivity(),
                 loadMeetingSyncStatus(),
                 loadInfrastructure()
             ]);
@@ -1529,37 +1451,61 @@
             }).join('');
         }
 
-        // Meeting Sync Pipeline
+        // Meeting Sync Pipeline (consolidated)
         async function loadMeetingSyncStatus() {
             try {
-                const data = await fetch('/dashboard/api/meeting-sync-status/').then(r => r.json());
+                // Fetch both APIs in parallel
+                const [syncData, pipelineData] = await Promise.all([
+                    fetch('/dashboard/api/meeting-sync-status/').then(r => r.json()),
+                    fetch('/dashboard/api/pipeline-activity/').then(r => r.json())
+                ]);
 
                 // Ended bots
-                document.getElementById('sync-ended-total').textContent = data.total_ended_bots ?? '--';
+                document.getElementById('sync-ended-total').textContent = syncData.total_ended_bots ?? '--';
 
                 // Recording states
-                document.getElementById('sync-rec-complete').textContent = data.recording_states?.complete ?? '--';
-                document.getElementById('sync-rec-in-progress').textContent = data.recording_states?.in_progress ?? '--';
-                document.getElementById('sync-rec-failed').textContent = data.recording_states?.failed ?? '--';
+                document.getElementById('sync-rec-complete').textContent = syncData.recording_states?.complete ?? '--';
+                document.getElementById('sync-rec-in-progress').textContent = syncData.recording_states?.in_progress ?? '--';
+                document.getElementById('sync-rec-failed').textContent = syncData.recording_states?.failed ?? '--';
 
                 // Transcription states
-                document.getElementById('sync-trans-complete').textContent = data.transcription_states?.complete ?? '--';
-                document.getElementById('sync-trans-in-progress').textContent = data.transcription_states?.in_progress ?? '--';
-                document.getElementById('sync-trans-failed').textContent = data.transcription_states?.failed ?? '--';
+                document.getElementById('sync-trans-complete').textContent = syncData.transcription_states?.complete ?? '--';
+                document.getElementById('sync-trans-in-progress').textContent = syncData.transcription_states?.in_progress ?? '--';
+                document.getElementById('sync-trans-failed').textContent = syncData.transcription_states?.failed ?? '--';
 
                 // Supabase sync
-                if (data.supabase_sync?.available) {
-                    document.getElementById('sync-supa-complete').textContent = data.supabase_sync?.complete ?? '--';
-                    document.getElementById('sync-supa-pending').textContent = data.supabase_sync?.pending ?? '--';
-                    document.getElementById('sync-supa-not-created').textContent = data.supabase_sync?.not_created ?? '--';
+                if (syncData.supabase_sync?.available) {
+                    document.getElementById('sync-supa-complete').textContent = syncData.supabase_sync?.complete ?? '--';
+                    document.getElementById('sync-supa-pending').textContent = syncData.supabase_sync?.pending ?? '--';
+                    document.getElementById('sync-supa-not-created').textContent = syncData.supabase_sync?.not_created ?? '--';
                 } else {
                     document.getElementById('sync-supa-complete').textContent = 'N/A';
                     document.getElementById('sync-supa-pending').textContent = 'N/A';
                     document.getElementById('sync-supa-not-created').textContent = 'N/A';
                 }
 
+                // Insights (from pipeline activity - unique meetings by final outcome)
+                const insightsSuccess = pipelineData.insight_extraction?.success ?? 0;
+                const insightsFailed = pipelineData.insight_extraction?.failed ?? 0;
+                const supaComplete = syncData.supabase_sync?.complete ?? 0;
+                const insightsPending = Math.max(0, supaComplete - insightsSuccess - insightsFailed);
+                document.getElementById('sync-insights-success').textContent = insightsSuccess;
+                document.getElementById('sync-insights-pending').textContent = insightsPending;
+                document.getElementById('sync-insights-failed').textContent = insightsFailed;
+
+                // Emails (from pipeline activity - unique meetings by final outcome)
+                const emailsSuccess = pipelineData.emails?.success ?? 0;
+                const emailsFailed = pipelineData.emails?.failed ?? 0;
+                const emailsPending = Math.max(0, insightsSuccess - emailsSuccess - emailsFailed);
+                document.getElementById('sync-email-success').textContent = emailsSuccess;
+                document.getElementById('sync-email-pending').textContent = emailsPending;
+                document.getElementById('sync-email-failed').textContent = emailsFailed;
+
+                // Update email list for expandable section
+                updateEmailList(pipelineData.emails_detail?.recent || []);
+
                 // Stuck meetings warning
-                const stuckCount = data.stuck_meetings ?? 0;
+                const stuckCount = syncData.stuck_meetings ?? 0;
                 const stuckWarning = document.getElementById('sync-stuck-warning');
                 if (stuckCount > 0) {
                     document.getElementById('sync-stuck-count').textContent = stuckCount;

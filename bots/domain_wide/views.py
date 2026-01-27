@@ -2836,21 +2836,53 @@ class PipelineActivityAPI(View):
 
     def get(self, request):
         from .models import PipelineActivity
+        from .supabase_client import get_supabase_client
 
         today = timezone.now().date()
 
-        # Get today's counts by event type
+        # Get bot_ids for bots that ended today (to filter to today's pipeline only)
+        today_ended_bots = Bot.objects.filter(
+            state=BotStates.ENDED,
+            updated_at__date=today,
+            meeting_url__isnull=False
+        ).exclude(meeting_url='').values_list('object_id', flat=True)
+        today_bot_ids = set(str(bid) for bid in today_ended_bots)
+
+        # Get meeting_ids for today's bots from Supabase
+        today_meeting_ids = set()
+        client = get_supabase_client()
+        if client and today_bot_ids:
+            try:
+                result = client.table('meetings').select(
+                    'id, attendee_bot_id'
+                ).in_('attendee_bot_id', list(today_bot_ids)).execute()
+                for m in (result.data or []):
+                    if m.get('id'):
+                        today_meeting_ids.add(m['id'])
+            except Exception as e:
+                logger.warning(f"Failed to fetch today's meeting IDs: {e}")
+
+        # Get today's activities, filtered to only today's meetings
         today_activities = PipelineActivity.objects.filter(created_at__date=today)
+        if today_meeting_ids:
+            today_activities_for_today_meetings = today_activities.filter(
+                meeting_id__in=today_meeting_ids
+            )
+        else:
+            # Fallback: filter by bot_id if we couldn't get meeting_ids
+            today_activities_for_today_meetings = today_activities.filter(
+                bot_id__in=today_bot_ids
+            )
 
         # Helper to count unique meetings by final outcome (most recent status wins)
         def count_by_final_outcome(queryset):
             """Count unique meetings by their final (most recent) status."""
-            from django.db.models import Max, Subquery, OuterRef
+            from django.db.models import Max, Subquery
 
             # Get the most recent activity ID for each meeting
             latest_per_meeting = queryset.filter(
                 meeting_id__isnull=False
-            ).values('meeting_id').annotate(
+            ).exclude(meeting_id='').values('meeting_id').annotate(
                 latest_id=Max('id')
             ).values('latest_id')
 
@@ -2862,27 +2894,23 @@ class PipelineActivityAPI(View):
                 'failed': final_outcomes.filter(status=PipelineActivity.Status.FAILED).count(),
             }
 
-        supabase_syncs = today_activities.filter(
-            event_type=PipelineActivity.EventType.SUPABASE_SYNC
-        )
-        insight_extraction = today_activities.filter(
+        # Filter by event type (using today's meetings only)
+        insight_extraction = today_activities_for_today_meetings.filter(
             event_type=PipelineActivity.EventType.INSIGHT_EXTRACTION
         )
-        emails = today_activities.filter(
+        emails = today_activities_for_today_meetings.filter(
             event_type=PipelineActivity.EventType.EMAIL_SENT
         )
 
-        # Get recent email details (last 20)
+        # Get recent email details (last 20, from today's meetings)
         recent_emails = emails.order_by('-created_at')[:20].values(
             'recipient', 'meeting_title', 'meeting_id', 'status', 'error', 'created_at'
         )
 
         return JsonResponse({
-            'supabase_syncs': count_by_final_outcome(supabase_syncs),
             'insight_extraction': count_by_final_outcome(insight_extraction),
-            'emails': {
-                'success': emails.filter(status=PipelineActivity.Status.SUCCESS).count(),
-                'failed': emails.filter(status=PipelineActivity.Status.FAILED).count(),
+            'emails': count_by_final_outcome(emails),
+            'emails_detail': {
                 'recent': list(recent_emails),
             },
             'timestamp': timezone.now().isoformat()
