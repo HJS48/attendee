@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class GstreamerPipeline:
-    AUDIO_FORMAT_PCM = "audio/x-raw,format=S16LE,channels=1,rate=32000,layout=interleaved"
+    AUDIO_FORMAT_PCM = "audio/x-raw,format=S16LE,channels=1,rate=48000,layout=interleaved"
     AUDIO_FORMAT_FLOAT = "audio/x-raw,format=F32LE,channels=1,rate=48000,layout=interleaved"
     OUTPUT_FORMAT_FLV = "flv"
     OUTPUT_FORMAT_MP4 = "mp4"
@@ -113,11 +113,11 @@ class GstreamerPipeline:
                 "videoconvert ! "
                 "videorate ! "
                 "queue name=q2 max-size-buffers=5000 max-size-bytes=500000000 max-size-time=0 ! "  # q2 can contain 100mb of video before it drops
-                "x264enc tune=zerolatency speed-preset=ultrafast ! "
+                "x264enc tune=zerolatency speed-preset=veryfast quantizer=20 !"
                 "queue name=q3 max-size-buffers=1000 max-size-bytes=100000000 max-size-time=0 ! "
                 f"{muxer_string} ! queue name=q4 ! {sink_string} "
                 f"{audio_source_string} "
-                "voaacenc bitrate=128000 ! "
+                "voaacenc bitrate=256000 !"
                 "queue name=q7 leaky=downstream max-size-buffers=1000000 max-size-bytes=100000000 max-size-time=0 ! "
                 "muxer. "
             )
