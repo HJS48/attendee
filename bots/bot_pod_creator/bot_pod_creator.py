@@ -287,7 +287,7 @@ class BotPodCreator:
                     )
 
     def get_pod_tolerations(self):
-        return [
+        tolerations = [
                     client.V1Toleration(
                         key="node.kubernetes.io/not-ready",
                         operator="Exists",
@@ -301,6 +301,34 @@ class BotPodCreator:
                         toleration_seconds=900  # Tolerate unreachable nodes for 15 minutes
                     )
                 ]
+
+        # Add custom tolerations from BOT_POD_TOLERATIONS env var
+        custom_tolerations_str = os.getenv("BOT_POD_TOLERATIONS")
+        if custom_tolerations_str:
+            try:
+                custom_tolerations = json.loads(custom_tolerations_str)
+                for t in custom_tolerations:
+                    tolerations.append(client.V1Toleration(
+                        key=t.get("key"),
+                        operator=t.get("operator", "Equal"),
+                        value=t.get("value"),
+                        effect=t.get("effect"),
+                        toleration_seconds=t.get("tolerationSeconds")
+                    ))
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse BOT_POD_TOLERATIONS: {e}")
+
+        return tolerations
+
+    def get_pod_node_selector(self):
+        """Get node selector from BOT_POD_NODE_SELECTOR env var"""
+        node_selector_str = os.getenv("BOT_POD_NODE_SELECTOR")
+        if node_selector_str:
+            try:
+                return json.loads(node_selector_str)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse BOT_POD_NODE_SELECTOR: {e}")
+        return None
 
     def get_pod_image_pull_secrets(self):
         if os.getenv("DISABLE_BOT_POD_IMAGE_PULL_SECRET", "false").lower() == "true":
@@ -382,7 +410,8 @@ class BotPodCreator:
                 restart_policy="Never",
                 image_pull_secrets=self.get_pod_image_pull_secrets(),
                 termination_grace_period_seconds=60,
-                tolerations= self.get_pod_tolerations(),
+                tolerations=self.get_pod_tolerations(),
+                node_selector=self.get_pod_node_selector(),
                 volumes=self.get_bot_pod_volumes(),
             )
         )
