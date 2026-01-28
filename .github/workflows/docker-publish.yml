@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: hjs48/attendee
 
 jobs:
   build-and-push:
@@ -24,8 +24,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: hjs48
+          password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Extract metadata
         id: meta
