@@ -37,6 +37,12 @@ urlpatterns = [
     path('api/resources/summary/', views.ResourceSummaryAPI.as_view(), name='api-resource-summary'),
     path('api/resources/bot/', views.BotResourcesAPI.as_view(), name='api-bot-resources'),
 
+    # Hetzner Cloud APIs
+    path('api/hetzner/node-pools/', views.HetznerNodePoolsAPI.as_view(), name='api-hetzner-node-pools'),
+    path('api/hetzner/autoscaler/', views.HetznerAutoscalerStatusAPI.as_view(), name='api-hetzner-autoscaler'),
+    path('api/hetzner/costs/', views.HetznerCostEstimateAPI.as_view(), name='api-hetzner-costs'),
+    path('api/hetzner/health/', views.HetznerCloudHealthAPI.as_view(), name='api-hetzner-health'),
+
     # Webhooks
     path('webhook/google-calendar/', views.GoogleCalendarWebhook.as_view(), name='google-calendar-webhook'),
 

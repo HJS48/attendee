@@ -53,6 +53,13 @@ from .resources import (
     BotResourcesAPI,
 )
 
+from .hetzner import (
+    HetznerNodePoolsAPI,
+    HetznerAutoscalerStatusAPI,
+    HetznerCostEstimateAPI,
+    HetznerCloudHealthAPI,
+)
+
 __all__ = [
     # Dashboard
     'HealthDashboardView',
@@ -93,4 +100,9 @@ __all__ = [
     # Resources
     'ResourceSummaryAPI',
     'BotResourcesAPI',
+    # Hetzner
+    'HetznerNodePoolsAPI',
+    'HetznerAutoscalerStatusAPI',
+    'HetznerCostEstimateAPI',
+    'HetznerCloudHealthAPI',
 ]
