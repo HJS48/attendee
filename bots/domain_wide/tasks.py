@@ -162,7 +162,7 @@ def _create_meeting_metadata_impl(bot_id: str):
     meeting_data = {
         'attendee_bot_id': str(bot.object_id),
         'meeting_url': bot.meeting_url,
-        'title': event.name if event else None,
+        'title': event.name if event and event.name else '',
         'transcript_status': 'pending',  # Will be updated when transcript is ready
     }
 
@@ -351,7 +351,7 @@ def _sync_transcript_impl(bot_id: str):
 
     # Upsert to Supabase
     result = upsert_meeting(meeting_data)
-    meeting_title = event.name if event else ''
+    meeting_title = event.name if event and event.name else ''
 
     if result:
         logger.info(f"Synced transcript to Supabase for bot {bot_id}: {len(transcript_segments)} utterances")
@@ -437,7 +437,7 @@ def _mark_transcript_failed_impl(bot_id: str):
     }
 
     result = upsert_meeting(meeting_data)
-    meeting_title = event.name if event else ''
+    meeting_title = event.name if event and event.name else ''
 
     if result:
         logger.info(f"Marked transcript as failed in Supabase for bot {bot_id}")
@@ -520,7 +520,7 @@ def _sync_meeting_to_supabase_impl(bot_id: str):
     meeting_data = {
         'attendee_bot_id': str(bot.object_id),
         'meeting_url': bot.meeting_url,
-        'title': event.name if event else None,
+        'title': event.name if event and event.name else '',
         'transcript_status': 'complete',
     }
 
