@@ -2436,11 +2436,12 @@
         async function loadHetznerHealth() {
             try {
                 const data = await fetch('/dashboard/api/hetzner/health/').then(r => r.json());
+                const health = data.health || {};
 
                 // CCM status
                 const ccmStat = document.getElementById('hetzner-ccm-stat');
                 const ccmStatus = document.getElementById('hetzner-ccm-status');
-                if (data.ccm?.healthy) {
+                if (health.cloud_controller?.status === 'healthy') {
                     ccmStatus.textContent = '✓';
                     ccmStat.className = 'k8s-stat healthy';
                 } else {
@@ -2451,7 +2452,7 @@
                 // Autoscaler status
                 const autoscalerStat = document.getElementById('hetzner-autoscaler-stat');
                 const autoscalerStatus = document.getElementById('hetzner-autoscaler-status');
-                if (data.autoscaler?.healthy) {
+                if (health.autoscaler?.status === 'healthy') {
                     autoscalerStatus.textContent = '✓';
                     autoscalerStat.className = 'k8s-stat healthy';
                 } else {
