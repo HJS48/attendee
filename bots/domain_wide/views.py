@@ -2504,9 +2504,9 @@ class MeetingSyncStatusAPI(View):
         else:
             target_date = timezone.now().date()
 
-        # Get all ended bots for the date
+        # Get all ended bots for the date (including fatal errors)
         ended_bots = Bot.objects.filter(
-            state=BotStates.ENDED,
+            state__in=[BotStates.ENDED, BotStates.FATAL_ERROR, BotStates.DATA_DELETED],
             updated_at__date=target_date,
             meeting_url__isnull=False
         ).exclude(meeting_url='')
@@ -2521,7 +2521,8 @@ class MeetingSyncStatusAPI(View):
 
         # Recording states
         rec_complete = recordings.filter(state=RecordingStates.COMPLETE).count()
-        rec_in_progress = recordings.filter(state=RecordingStates.IN_PROGRESS).count()
+        # In progress shows ALL active recordings (not filtered by ended bots)
+        rec_in_progress = Recording.objects.filter(state=RecordingStates.IN_PROGRESS).count()
         rec_failed = recordings.filter(state=RecordingStates.FAILED).count()
 
         # Transcription states
