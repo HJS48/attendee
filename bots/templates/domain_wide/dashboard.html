@@ -1157,6 +1157,54 @@
                         <!-- Populated by JS -->
                     </div>
                 </div>
+
+                <!-- Hetzner Cloud Section -->
+                <div id="hetzner-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                    <h3 style="font-size: 14px; color: #666; margin-bottom: 12px;">Hetzner Cloud</h3>
+
+                    <!-- Hetzner Stats Row -->
+                    <div class="k8s-stats-row" style="grid-template-columns: repeat(5, 1fr);">
+                        <div class="k8s-stat" id="hetzner-ccm-stat">
+                            <div class="value" id="hetzner-ccm-status">--</div>
+                            <div class="label">CCM</div>
+                        </div>
+                        <div class="k8s-stat" id="hetzner-autoscaler-stat">
+                            <div class="value" id="hetzner-autoscaler-status">--</div>
+                            <div class="label">Autoscaler</div>
+                        </div>
+                        <div class="k8s-stat">
+                            <div class="value" id="hetzner-bot-nodes">--</div>
+                            <div class="label">Bot Nodes</div>
+                        </div>
+                        <div class="k8s-stat">
+                            <div class="value" id="hetzner-bot-capacity">--</div>
+                            <div class="label">Bot Capacity</div>
+                        </div>
+                        <div class="k8s-stat">
+                            <div class="value" id="hetzner-cost-hourly">--</div>
+                            <div class="label">EUR/hr</div>
+                        </div>
+                    </div>
+
+                    <!-- Node Pool Breakdown -->
+                    <div id="hetzner-pools-container" style="margin-top: 12px;">
+                        <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">Node Pools</h4>
+                        <div id="hetzner-pools-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Autoscaler Events -->
+                    <div id="hetzner-events-container" style="margin-top: 12px; display: none;">
+                        <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">
+                            Recent Scale Events
+                            <span id="hetzner-events-count" style="color: #888; font-size: 11px;"></span>
+                        </h4>
+                        <div id="hetzner-events-list" style="max-height: 150px; overflow-y: auto; font-size: 12px;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Celery Queue (shown in both modes) - Enhanced -->
@@ -2055,6 +2103,9 @@
                     loadK8sPods();
                     loadK8sDeployments();
                     loadK8sEvents();
+
+                    // Load Hetzner Cloud data
+                    loadHetznerData();
                 } else {
                     dockerSection.classList.remove('hidden');
                     k8sSection.classList.remove('visible');
@@ -2379,6 +2430,137 @@
             } catch (error) {
                 console.error('Failed to load K8s events:', error);
             }
+        }
+
+        // Hetzner Cloud Monitoring
+        async function loadHetznerHealth() {
+            try {
+                const data = await fetch('/dashboard/api/hetzner/health/').then(r => r.json());
+
+                // CCM status
+                const ccmStat = document.getElementById('hetzner-ccm-stat');
+                const ccmStatus = document.getElementById('hetzner-ccm-status');
+                if (data.ccm?.healthy) {
+                    ccmStatus.textContent = '✓';
+                    ccmStat.className = 'k8s-stat healthy';
+                } else {
+                    ccmStatus.textContent = '✗';
+                    ccmStat.className = 'k8s-stat error';
+                }
+
+                // Autoscaler status
+                const autoscalerStat = document.getElementById('hetzner-autoscaler-stat');
+                const autoscalerStatus = document.getElementById('hetzner-autoscaler-status');
+                if (data.autoscaler?.healthy) {
+                    autoscalerStatus.textContent = '✓';
+                    autoscalerStat.className = 'k8s-stat healthy';
+                } else {
+                    autoscalerStatus.textContent = '✗';
+                    autoscalerStat.className = 'k8s-stat error';
+                }
+            } catch (error) {
+                console.error('Failed to load Hetzner health:', error);
+            }
+        }
+
+        async function loadHetznerNodePools() {
+            try {
+                const data = await fetch('/dashboard/api/hetzner/node-pools/').then(r => r.json());
+                const pools = data.pools || [];
+                const summary = data.summary || {};
+
+                // Update summary stats
+                document.getElementById('hetzner-bot-nodes').textContent = summary.bot_pool_nodes || 0;
+                document.getElementById('hetzner-bot-capacity').textContent = summary.total_bot_capacity || 0;
+
+                // Pool grid
+                const grid = document.getElementById('hetzner-pools-grid');
+                grid.innerHTML = pools.map(pool => {
+                    const statusColor = pool.ready === pool.total ? '#10b981' : pool.ready > 0 ? '#f59e0b' : '#ef4444';
+                    return `
+                        <div style="background: #f8f9fa; border-radius: 6px; padding: 10px;">
+                            <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 6px;">${escapeHtml(pool.name)}</div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                                <span>Nodes:</span>
+                                <span style="color: ${statusColor}; font-weight: 500;">${pool.ready}/${pool.total}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                                <span>CPU:</span>
+                                <span>${pool.cpu_total}m</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                                <span>Memory:</span>
+                                <span>${(pool.memory_total / 1073741824).toFixed(1)}Gi</span>
+                            </div>
+                            ${pool.name === 'bot-pool' ? `
+                            <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                                <span>Bot Cap:</span>
+                                <span style="font-weight: 500;">${pool.bot_capacity || 0}</span>
+                            </div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Failed to load Hetzner node pools:', error);
+            }
+        }
+
+        async function loadHetznerCosts() {
+            try {
+                const data = await fetch('/dashboard/api/hetzner/costs/').then(r => r.json());
+                const costEl = document.getElementById('hetzner-cost-hourly');
+                costEl.textContent = data.total_hourly_eur?.toFixed(3) || '--';
+            } catch (error) {
+                console.error('Failed to load Hetzner costs:', error);
+            }
+        }
+
+        async function loadHetznerAutoscaler() {
+            try {
+                const data = await fetch('/dashboard/api/hetzner/autoscaler/').then(r => r.json());
+                const events = data.recent_events || [];
+                const container = document.getElementById('hetzner-events-container');
+                const list = document.getElementById('hetzner-events-list');
+                const countEl = document.getElementById('hetzner-events-count');
+
+                if (events.length === 0) {
+                    container.style.display = 'none';
+                    return;
+                }
+
+                container.style.display = 'block';
+                countEl.textContent = `(${events.length} events)`;
+
+                list.innerHTML = events.slice(0, 10).map(evt => {
+                    const ageStr = evt.age_seconds
+                        ? evt.age_seconds < 60 ? `${evt.age_seconds}s ago`
+                        : evt.age_seconds < 3600 ? `${Math.floor(evt.age_seconds / 60)}m ago`
+                        : `${Math.floor(evt.age_seconds / 3600)}h ago`
+                        : '';
+                    const isScaleUp = evt.reason?.includes('ScaleUp') || evt.reason?.includes('scale up');
+                    const color = isScaleUp ? '#10b981' : '#f59e0b';
+                    return `
+                        <div style="padding: 4px 0; border-bottom: 1px solid #eee; font-size: 12px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: ${color}; font-weight: 500;">${escapeHtml(evt.reason || 'Event')}</span>
+                                <span style="color: #999; font-size: 10px;">${ageStr}</span>
+                            </div>
+                            <div style="color: #666; font-size: 11px;">${escapeHtml((evt.message || '').substring(0, 100))}${(evt.message?.length || 0) > 100 ? '...' : ''}</div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Failed to load Hetzner autoscaler:', error);
+            }
+        }
+
+        async function loadHetznerData() {
+            await Promise.all([
+                loadHetznerHealth(),
+                loadHetznerNodePools(),
+                loadHetznerCosts(),
+                loadHetznerAutoscaler()
+            ]);
         }
 
         async function doK8sLookup() {
