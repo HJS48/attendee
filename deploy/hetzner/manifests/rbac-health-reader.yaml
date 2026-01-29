@@ -1,0 +1,23 @@
+# ClusterRole for health dashboard to read cluster-wide resources
+# Required for SystemHealthAPI to check scheduler pod status and node counts
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: attendee-health-reader
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "nodes"]
+  verbs: ["list", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: attendee-health-reader-binding
+subjects:
+- kind: ServiceAccount
+  name: attendee-bot-creator
+  namespace: attendee
+roleRef:
+  kind: ClusterRole
+  name: attendee-health-reader
+  apiGroup: rbac.authorization.k8s.io

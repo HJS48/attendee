@@ -74,3 +74,20 @@ kubectl get deploy cluster-autoscaler -n kube-system -o jsonpath='{.spec.templat
 ```
 
 If missing, bot nodes will be created without labels and pods won't schedule (causes runaway scaling).
+
+## RBAC
+
+The `attendee-bot-creator` service account needs:
+1. **Role `bot-pod-manager`** (namespace-scoped): Create/manage bot pods
+2. **ClusterRole `attendee-health-reader`** (cluster-scoped): Read namespaces/nodes for health dashboard
+
+```bash
+# Verify RBAC
+kubectl get clusterrolebinding attendee-health-reader-binding
+kubectl get rolebinding attendee-bot-creator-binding -n attendee
+```
+
+If health dashboard shows scheduler as orange/unknown, the ClusterRole may be missing:
+```bash
+kubectl apply -f manifests/rbac-health-reader.yaml
+```
