@@ -294,6 +294,17 @@ def send_transcript_email_sync(meeting_id: str, summary: str, action_items: list
 
         for recipient in recipients:
             try:
+                # Dedup check - skip if already sent to this recipient for this meeting
+                already_sent = PipelineActivity.objects.filter(
+                    event_type=PipelineActivity.EventType.EMAIL_SENT,
+                    status=PipelineActivity.Status.SUCCESS,
+                    meeting_id=meeting_id,
+                    recipient=recipient,
+                ).exists()
+                if already_sent:
+                    logger.debug(f"Skipping duplicate email to {recipient} for meeting {meeting_id}")
+                    continue
+
                 # Generate personalized token
                 token = create_transcript_token(meeting_id, recipient)
                 transcript_url = f"{base_url}/transcripts/{meeting_id}?token={token}"
