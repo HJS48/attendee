@@ -62,7 +62,8 @@ class Command(BaseCommand):
                 self._run_autopay_tasks()
                 if DOMAIN_WIDE_ENABLED:
                     self._run_watch_channel_renewals()
-                    self._run_supabase_sync()
+                    # DISABLED: _run_supabase_sync causes queue flooding - using signal-based approach instead
+                    # self._run_supabase_sync()
             except Exception:
                 log.exception("Scheduler cycle failed")
             finally:
