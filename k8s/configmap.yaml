@@ -43,6 +43,10 @@ data:
   BOT_MEMORY_LIMIT: "8Gi"
   BOT_EPHEMERAL_STORAGE_REQUEST: "5Gi"
 
+  # Bot pool scheduling - target autoscaled bot nodes
+  BOT_POD_NODE_SELECTOR: '{"workload": "bots"}'
+  BOT_POD_TOLERATIONS: '[{"key": "workload", "operator": "Equal", "value": "bots", "effect": "NoSchedule"}]'
+
   # Chrome settings
   ENABLE_CHROME_SANDBOX: "false"
 
