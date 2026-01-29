@@ -1,4 +1,4 @@
-<!-- Parent: ../CLAUDE.md | Namespace: attendee | KUBECONFIG=~/projects/hetzner-migration/kubeconfig -->
+<!-- Parent: ../README.md | Namespace: attendee | KUBECONFIG=~/projects/attendee/deploy/hetzner/kubeconfig -->
 
 # Configuration
 
@@ -23,6 +23,7 @@ kubectl rollout restart deployment/attendee-api deployment/attendee-scheduler de
 | BOT_CPU_LIMIT | 4000m | CPU limit per bot (allows burst) |
 | BOT_MEMORY_REQUEST | 2Gi | Memory per bot |
 | BOT_MEMORY_LIMIT | 8Gi | Max memory |
+| BOT_POD_IMAGE_PULL_POLICY | Always | Must be Always for autoscaled nodes (default Never breaks new nodes) |
 | MAX_CONCURRENT_BOTS | 20 | Scheduler limit |
 | BOT_POD_NODE_SELECTOR | {"workload":"bots"} | Target bot pool |
 | DATABASE_URL | postgres://... | PostgreSQL connection |
