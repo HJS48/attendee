@@ -502,6 +502,9 @@ class HetznerCloudHealthAPI(View):
 
             return JsonResponse({
                 'health': health,
+                # Backwards compat for dashboard JS
+                'ccm': {'healthy': health['cloud_controller']['status'] == 'healthy'},
+                'autoscaler': {'healthy': health['autoscaler']['status'] == 'healthy'},
                 'timestamp': timezone.now().isoformat(),
             })
 
@@ -510,4 +513,6 @@ class HetznerCloudHealthAPI(View):
             return JsonResponse({
                 'error': str(e),
                 'health': health,
+                'ccm': {'healthy': False},
+                'autoscaler': {'healthy': False},
             }, status=500)
