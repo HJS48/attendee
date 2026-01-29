@@ -8,9 +8,9 @@ Production Kubernetes cluster for **Attendee** deployed on Hetzner Cloud.
 
 ## Kubeconfig
 
-Kubeconfig is stored locally (not in repo). Set before running kubectl:
+Kubeconfig is in this folder (gitignored). Set before running kubectl:
 ```bash
-export KUBECONFIG=~/projects/hetzner-migration/kubeconfig
+export KUBECONFIG=~/projects/attendee/deploy/hetzner/kubeconfig
 ```
 
 ## Essential Commands
@@ -61,9 +61,11 @@ K8s manifests in `manifests/` - apply with:
 kubectl apply -f manifests/
 ```
 
-## Sensitive Files (NOT in repo)
+## Sensitive Files (gitignored)
 
-Keep these locally in `~/projects/hetzner-migration/`:
+These files are in this folder but excluded from git:
 - `kubeconfig` - cluster credentials
 - `cluster.yaml` - Hetzner cluster definition (contains API token)
 - `cluster-autoscaler.yaml` - autoscaler config (contains k3s token)
+- `configmap-env.yaml` - exported configmap (contains DB password)
+- `contabo-backup/` - old Contabo configs for reference

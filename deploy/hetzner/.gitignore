@@ -1,0 +1,6 @@
+# Sensitive files - keep local only
+kubeconfig
+cluster.yaml
+cluster-autoscaler.yaml
+configmap-env.yaml
+contabo-backup/app-secrets.yaml
