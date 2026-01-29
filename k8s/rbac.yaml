@@ -96,7 +96,7 @@ rules:
   resources: ["deployments", "replicasets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
-  resources: ["events", "pods", "pods/log"]
+  resources: ["events", "pods", "pods/log", "services"]
   verbs: ["get", "list", "watch"]
 ---
 # Bind ClusterRole to service account

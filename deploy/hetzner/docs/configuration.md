@@ -4,11 +4,16 @@
 
 ## ConfigMap (env)
 
+> **IMPORTANT:** For Hetzner deployments, use `deploy/hetzner/configmap-env.yaml` NOT `k8s/configmap.yaml`. The k8s/ version is for local/Contabo and lacks DATABASE_URL and other Hetzner-specific settings. Applying the wrong configmap will break the database connection.
+
 ```bash
+# Apply configmap changes (from repo root)
+KUBECONFIG=deploy/hetzner/kubeconfig kubectl replace -f deploy/hetzner/configmap-env.yaml --force
+
 # View
 kubectl get configmap env -n attendee -o yaml
 
-# Edit
+# Edit directly (for quick changes)
 kubectl edit configmap env -n attendee
 
 # Restart services after edit
