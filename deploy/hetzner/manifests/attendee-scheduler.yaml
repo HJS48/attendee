@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: attendee-scheduler
+  namespace: attendee
+  labels:
+    app: attendee-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: attendee-scheduler
+  template:
+    metadata:
+      labels:
+        app: attendee-scheduler
+    spec:
+      serviceAccountName: attendee-bot-creator
+      containers:
+        - name: attendee-scheduler
+          image: ghcr.io/hjs48/attendee:latest
+          imagePullPolicy: Always
+          command: ["python"]
+          args: ["manage.py", "run_scheduler"]
+          envFrom:
+            - configMapRef:
+                name: env
+            - secretRef:
+                name: app-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"

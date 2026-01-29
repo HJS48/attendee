@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cleanup-bot-pods
+  namespace: attendee
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: attendee-bot-creator
+          imagePullSecrets:
+            - name: ghcr-secret
+          containers:
+            - name: cleanup
+              image: ghcr.io/hjs48/attendee:latest
+              command: ["python"]
+              args: ["manage.py", "clean_up_completed_bot_pods"]
+              envFrom:
+                - configMapRef:
+                    name: env
+                - secretRef:
+                    name: app-secrets
+          restartPolicy: OnFailure
