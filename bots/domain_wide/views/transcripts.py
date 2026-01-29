@@ -1,0 +1,131 @@
+"""
+Transcript viewer for meeting participants.
+"""
+import logging
+
+from django.shortcuts import render
+from django.views import View
+
+logger = logging.getLogger(__name__)
+
+
+class TranscriptView(View):
+    """
+    Display meeting transcript for authorized participants.
+
+    Access via token from email link or session auth.
+    Fetches transcript from Supabase meetings table.
+    """
+
+    def get(self, request, meeting_id):
+        from ..utils import verify_transcript_token, is_valid_uuid
+        from ..supabase_client import get_meeting, get_meeting_insights, get_attendee_emails_for_meeting
+
+        # Validate meeting ID format
+        if not is_valid_uuid(meeting_id):
+            return render(request, 'domain_wide/error.html', {
+                'error': 'Invalid meeting ID'
+            }, status=400)
+
+        # Authenticate via token or session
+        token = request.GET.get('token')
+        user_email = None
+
+        if token:
+            token_data = verify_transcript_token(token)
+            if not token_data:
+                return render(request, 'domain_wide/error.html', {
+                    'error': 'Invalid or expired access link'
+                }, status=401)
+            if token_data.get('meetingId') != meeting_id:
+                return render(request, 'domain_wide/error.html', {
+                    'error': 'Access link does not match this meeting'
+                }, status=403)
+            user_email = token_data.get('email', '').lower()
+        elif request.user.is_authenticated:
+            user_email = request.user.email.lower()
+        else:
+            return render(request, 'domain_wide/error.html', {
+                'error': 'Access denied - use the link from your email'
+            }, status=401)
+
+        # Fetch meeting from Supabase
+        meeting = get_meeting(meeting_id)
+        if not meeting:
+            return render(request, 'domain_wide/error.html', {
+                'error': 'Meeting not found'
+            }, status=404)
+
+        # Authorization: check if user is participant or organizer
+        attendees = get_attendee_emails_for_meeting(meeting.get('meeting_url', ''))
+        attendee_emails = [
+            a.get('email', '').lower() for a in attendees
+            if isinstance(a, dict) and a.get('email')
+        ]
+
+        organizer_email = (meeting.get('organizer_email') or '').lower()
+        is_participant = user_email in attendee_emails
+        is_organizer = user_email == organizer_email
+
+        if not is_participant and not is_organizer:
+            return render(request, 'domain_wide/error.html', {
+                'error': 'Access denied - you must be a meeting participant'
+            }, status=403)
+
+        # Fetch insights
+        insights = get_meeting_insights(meeting_id)
+        summary = insights[0].get('summary', '') if insights else ''
+        action_items = []
+        if insights and insights[0].get('action_items'):
+            action_items = insights[0]['action_items'].get('items', [])
+
+        # Build context for template
+        transcript = meeting.get('transcript') or []
+        participants = meeting.get('participants') or []
+
+        # Format timestamps for each transcript segment
+        for seg in transcript:
+            start_ms = seg.get('start_ms', 0)
+            total_seconds = start_ms // 1000
+            minutes = total_seconds // 60
+            seconds = total_seconds % 60
+            seg['formatted_time'] = f"[{minutes:02d}:{seconds:02d}]"
+
+        # Get unique speakers and assign colors
+        speakers = list(set(seg.get('speaker_name', 'Unknown') for seg in transcript))
+        speaker_colors = {speaker: idx % 8 for idx, speaker in enumerate(speakers)}
+
+        # Add speaker color to each segment for template
+        for seg in transcript:
+            speaker = seg.get('speaker_name', 'Unknown')
+            seg['speaker_color'] = speaker_colors.get(speaker, 0)
+
+        # Format duration
+        duration_seconds = meeting.get('duration_seconds', 0)
+        if duration_seconds:
+            mins = duration_seconds // 60
+            hrs = mins // 60
+            duration_display = f"{hrs}h {mins % 60}m" if hrs else f"{mins} minutes"
+        else:
+            duration_display = "Unknown duration"
+
+        # Format participant names
+        participant_names = [p.get('name', 'Unknown') for p in participants[:5]]
+        if len(participants) > 5:
+            participant_names.append(f"+{len(participants) - 5} more")
+
+        context = {
+            'meeting': meeting,
+            'meeting_id': meeting_id,
+            'title': meeting.get('title', 'Untitled Meeting'),
+            'started_at': meeting.get('started_at'),
+            'duration': duration_display,
+            'participant_names': ', '.join(participant_names),
+            'recording_url': meeting.get('recording_url', ''),
+            'summary': summary,
+            'action_items': action_items,
+            'transcript': transcript,
+            'speaker_colors': speaker_colors,
+        }
+
+        return render(request, 'domain_wide/transcript.html', context)
