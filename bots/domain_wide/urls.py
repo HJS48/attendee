@@ -38,7 +38,11 @@ urlpatterns = [
     path('api/resources/summary/', views.ResourceSummaryAPI.as_view(), name='api-resource-summary'),
     path('api/resources/bot/', views.BotResourcesAPI.as_view(), name='api-bot-resources'),
 
-    # Active Bots APIs
+    # Active Bots/Pods APIs
+    path('api/pods/active/', views.ActiveBotPodsAPI.as_view(), name='api-pods-active'),
+    path('api/pods/completed/', views.CompletedBotsAPI.as_view(), name='api-pods-completed'),
+    path('api/pods/calendar-event/<str:event_id>/', views.CalendarEventDetailAPI.as_view(), name='api-pods-calendar-event'),
+    # Legacy routes (backwards compat)
     path('api/bots/active/', views.ActiveBotsAPI.as_view(), name='api-bots-active'),
     path('api/bots/completed/', views.CompletedBotsAPI.as_view(), name='api-bots-completed'),
     path('api/bots/calendar-event/<str:event_id>/', views.CalendarEventDetailAPI.as_view(), name='api-calendar-event'),

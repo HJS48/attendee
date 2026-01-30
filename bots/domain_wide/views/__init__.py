@@ -55,6 +55,7 @@ from .resources import (
 )
 
 from .active_bots import (
+    ActiveBotPodsAPI,
     ActiveBotsAPI,
     CompletedBotsAPI,
     CalendarEventDetailAPI,
@@ -109,7 +110,8 @@ __all__ = [
     # Resources
     'ResourceSummaryAPI',
     'BotResourcesAPI',
-    # Active Bots
+    # Active Bots/Pods
+    'ActiveBotPodsAPI',
     'ActiveBotsAPI',
     'CompletedBotsAPI',
     'CalendarEventDetailAPI',

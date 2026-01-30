@@ -441,6 +441,9 @@
         }
         .resource-cell .actual { font-weight: 600; }
         .resource-cell .limits { color: #888; }
+        .resource-cell.low { color: #10b981; }
+        .resource-cell.medium { color: #f59e0b; }
+        .resource-cell.high { color: #ef4444; }
         .bot-pool-status {
             display: inline-flex;
             align-items: center;
@@ -933,24 +936,24 @@
             </table>
         </div>
 
-        <!-- Active Bots -->
+        <!-- Active Pods -->
         <div class="card">
             <div class="card-header">
-                <h2>Active Bots <span class="count-badge" id="active-bots-count">0</span></h2>
+                <h2>Active Pods <span class="count-badge" id="active-bots-count">0</span></h2>
                 <div class="bot-pool-status" id="bot-pool-status">
                     Bot Pool: <span id="bot-pool-nodes">--</span>
                 </div>
             </div>
             <div id="active-bots-empty" style="display: none; padding: 20px; text-align: center; color: #888;">
-                No active bots at this time.
+                No active pods at this time.
             </div>
             <table class="active-bots-table" id="active-bots-table" style="display: none;">
                 <thead>
                     <tr>
-                        <th>Bot ID</th>
+                        <th>Pod</th>
                         <th>Meeting</th>
-                        <th>CPU (actual/req/lim)</th>
-                        <th>Memory (actual/req/lim)</th>
+                        <th>CPU</th>
+                        <th>Memory</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -960,19 +963,20 @@
             </table>
         </div>
 
-        <!-- Completed Bots (Today) -->
+        <!-- Completed Pods (Today) -->
         <div class="card">
-            <div class="card-header">
-                <h2>Completed Bots (Today) <span class="count-badge" id="completed-bots-count">0</span></h2>
-                <button class="show-more-btn" id="show-more-completed" onclick="expandCompletedBots()" style="display: none;">Show all</button>
+            <div class="card-header collapsible-header collapsed" onclick="toggleCollapsible('completed-pods-content')">
+                <h2>Completed Pods <span class="count-badge" id="completed-bots-count">0 today</span></h2>
+                <button class="show-more-btn" id="show-more-completed" onclick="event.stopPropagation(); expandCompletedBots()" style="display: none;">Show all</button>
             </div>
+            <div id="completed-pods-content" class="collapsible-content collapsed">
             <div id="completed-bots-empty" style="display: none; padding: 20px; text-align: center; color: #888;">
-                No completed bots today.
+                No completed pods today.
             </div>
             <table class="active-bots-table" id="completed-bots-table" style="display: none;">
                 <thead>
                     <tr>
-                        <th>Bot ID</th>
+                        <th>Pod</th>
                         <th>Meeting</th>
                         <th>Peak CPU</th>
                         <th>Peak Memory</th>
@@ -983,6 +987,7 @@
                     <tr><td colspan="5" class="loading">Loading...</td></tr>
                 </tbody>
             </table>
+            </div>
         </div>
 
         <!-- Legacy Resource Usage (hidden, kept for backward compat) -->
@@ -1223,40 +1228,12 @@
                     <span class="alert-detail" id="k8s-alert-detail"></span>
                 </div>
 
-                <!-- K8s Stats Row -->
-                <div class="k8s-stats-row">
-                    <div class="k8s-stat" id="k8s-api-stat">
-                        <div class="value" id="k8s-api-status">--</div>
-                        <div class="label">API Health</div>
-                    </div>
-                    <div class="k8s-stat">
-                        <div class="value" id="k8s-pods-running">--</div>
-                        <div class="label">Pods Running</div>
-                    </div>
-                    <div class="k8s-stat">
-                        <div class="value" id="k8s-pods-pending">--</div>
-                        <div class="label">Pods Pending</div>
-                    </div>
-                    <div class="k8s-stat">
-                        <div class="value" id="k8s-pods-failed">--</div>
-                        <div class="label">Pods Failed</div>
-                    </div>
-                    <div class="k8s-stat">
-                        <div class="value" id="k8s-nodes-ready">--</div>
-                        <div class="label">Nodes Ready</div>
-                    </div>
-                    <div class="k8s-stat">
-                        <div class="value" id="k8s-api-latency">--</div>
-                        <div class="label">API Latency</div>
-                    </div>
-                </div>
-
-                <!-- System Services (collapsible) -->
+                <!-- System Services (expanded by default) -->
                 <div style="margin-bottom: 16px;">
-                    <h3 class="collapsible-header collapsed" onclick="toggleCollapsible('system-services')" style="font-size: 14px; color: #666; margin-bottom: 8px; cursor: pointer;">
+                    <h3 class="collapsible-header" onclick="toggleCollapsible('system-services')" style="font-size: 14px; color: #666; margin-bottom: 8px; cursor: pointer;">
                         System Services
                     </h3>
-                    <div id="system-services" class="collapsible-content collapsed">
+                    <div id="system-services" class="collapsible-content">
                         <div class="system-services-grid" id="system-services-grid">
                             <div class="loading">Loading services...</div>
                         </div>
@@ -2208,24 +2185,26 @@
             }
         });
 
-        // Active Bots
+        // Active Pods
         let allCompletedBots = [];
 
         async function loadActiveBots() {
             try {
-                const data = await fetch('/dashboard/api/bots/active/').then(r => r.json());
-                const bots = data.bots || [];
+                const data = await fetch('/dashboard/api/pods/active/').then(r => r.json());
+                const running = data.running || [];
+                const pending = data.pending || [];
+                const pods = [...running, ...pending];
                 const limits = data.limits || {};
 
                 // Update counts
                 document.getElementById('active-bots-count').textContent =
-                    `${data.running_count || 0} running, ${data.pending_count || 0} pending`;
+                    `${running.length} running, ${pending.length} pending`;
 
                 // Update bot pool status
                 const pool = data.bot_pool || {};
                 if (pool.active_nodes !== null) {
                     document.getElementById('bot-pool-nodes').textContent =
-                        `${pool.active_nodes}/${pool.max_nodes} nodes active`;
+                        `${pool.active_nodes}/${pool.max_nodes} nodes`;
                 } else {
                     document.getElementById('bot-pool-nodes').textContent = '--';
                 }
@@ -2234,7 +2213,7 @@
                 const empty = document.getElementById('active-bots-empty');
                 const tbody = document.getElementById('active-bots-body');
 
-                if (bots.length === 0) {
+                if (pods.length === 0) {
                     table.style.display = 'none';
                     empty.style.display = 'block';
                     return;
@@ -2243,52 +2222,58 @@
                 table.style.display = 'table';
                 empty.style.display = 'none';
 
-                tbody.innerHTML = bots.map(bot => {
-                    // Format CPU
-                    const cpuActual = bot.cpu_actual_millicores !== null ? bot.cpu_actual_millicores : '--';
-                    const cpuReq = (limits.cpu_request_millicores / 1000).toFixed(1);
-                    const cpuLim = (limits.cpu_limit_millicores / 1000).toFixed(1);
+                tbody.innerHTML = pods.map(pod => {
+                    // Format CPU as "value (%)""
+                    const cpuVal = pod.cpu_millicores !== null ? pod.cpu_millicores : '--';
+                    const cpuPct = pod.cpu_pct !== null ? pod.cpu_pct : '--';
+                    const cpuClass = cpuPct > 80 ? 'high' : cpuPct > 50 ? 'medium' : 'low';
 
-                    // Format Memory (convert bytes to Gi)
-                    const memActual = bot.memory_actual_bytes !== null
-                        ? (bot.memory_actual_bytes / (1024*1024*1024)).toFixed(1)
+                    // Format Memory as "value (%)""
+                    const memGi = pod.memory_bytes !== null
+                        ? (pod.memory_bytes / (1024*1024*1024)).toFixed(1)
                         : '--';
-                    const memReq = (limits.memory_request_bytes / (1024*1024*1024)).toFixed(0);
-                    const memLim = (limits.memory_limit_bytes / (1024*1024*1024)).toFixed(0);
+                    const memPct = pod.memory_pct !== null ? pod.memory_pct : '--';
+                    const memClass = memPct > 80 ? 'high' : memPct > 50 ? 'medium' : 'low';
 
                     // Meeting link
-                    const meetingHtml = bot.meeting_name && bot.calendar_event_id
-                        ? `<a href="#" class="meeting-link" onclick="showCalendarEvent('${bot.calendar_event_id}'); return false;">${escapeHtml(bot.meeting_name)} ↗</a>`
-                        : bot.meeting_name
-                            ? escapeHtml(bot.meeting_name)
+                    const meetingHtml = pod.meeting_name && pod.calendar_event_id
+                        ? `<a href="#" class="meeting-link" onclick="showCalendarEvent('${pod.calendar_event_id}'); return false;">${escapeHtml(pod.meeting_name)} ↗</a>`
+                        : pod.meeting_name
+                            ? escapeHtml(pod.meeting_name)
                             : '<span style="color: #888;">—</span>';
 
-                    // Status badge
-                    const statusClass = bot.is_running ? 'badge-warning' : 'badge-info';
+                    // Status badge - use status field directly
+                    const isRunning = running.includes(pod);
+                    const statusClass = isRunning ? 'badge-warning' : 'badge-info';
+
+                    // Truncate pod name for display
+                    const displayName = pod.pod_name.length > 24
+                        ? pod.pod_name.substring(0, 24) + '...'
+                        : pod.pod_name;
 
                     return `
-                        <tr onclick="showBotResources('${bot.object_id}')">
-                            <td><code>${bot.object_id.substring(0, 16)}...</code></td>
+                        <tr onclick="showBotResources('${pod.bot_id || pod.pod_name}')">
+                            <td><code title="${escapeHtml(pod.pod_name)}">${escapeHtml(displayName)}</code></td>
                             <td>${meetingHtml}</td>
-                            <td class="resource-cell">
-                                <span class="actual">${cpuActual}</span> / ${cpuReq} / ${cpuLim}
+                            <td class="resource-cell ${cpuClass}">
+                                ${cpuVal}m (${cpuPct}%)
                             </td>
-                            <td class="resource-cell">
-                                <span class="actual">${memActual}</span> / ${memReq} / ${memLim}Gi
+                            <td class="resource-cell ${memClass}">
+                                ${memGi}Gi (${memPct}%)
                             </td>
-                            <td><span class="badge ${statusClass}">${escapeHtml(bot.state)}</span></td>
+                            <td><span class="badge ${statusClass}">${escapeHtml(pod.status)}</span></td>
                         </tr>
                     `;
                 }).join('');
 
             } catch (error) {
-                console.error('Failed to load active bots:', error);
+                console.error('Failed to load active pods:', error);
             }
         }
 
         async function loadCompletedBots(showAll = false) {
             try {
-                const data = await fetch('/dashboard/api/bots/completed/').then(r => r.json());
+                const data = await fetch('/dashboard/api/pods/completed/').then(r => r.json());
                 allCompletedBots = data.bots || [];
                 const totalCount = data.total_count || 0;
 
@@ -2506,9 +2491,6 @@
                     k8sSection.classList.add('visible');
                     k8sLookupSection.classList.add('visible');
 
-                    // Update K8s stats
-                    updateK8sStats(data.kubernetes);
-
                     // Load K8s alerts, pods, deployments, and events
                     loadK8sAlerts();
                     loadK8sPods();
@@ -2583,53 +2565,6 @@
                 if (workerStatus) workerStatus.className = 'status-dot status-yellow';
                 if (redisStatus) redisStatus.className = 'status-dot status-yellow';
             }
-        }
-
-        function updateK8sStats(k8s) {
-            if (!k8s) return;
-
-            // API health
-            const apiStat = document.getElementById('k8s-api-stat');
-            const apiStatus = document.getElementById('k8s-api-status');
-            if (k8s.api_healthy) {
-                apiStatus.textContent = '✓';
-                apiStat.className = 'k8s-stat healthy';
-            } else {
-                apiStatus.textContent = '✗';
-                apiStat.className = 'k8s-stat error';
-            }
-
-            // API latency
-            document.getElementById('k8s-api-latency').textContent =
-                k8s.api_latency_ms ? `${k8s.api_latency_ms}ms` : '--';
-
-            // Pod counts from namespaces
-            let totalRunning = 0, totalPending = 0, totalFailed = 0;
-            for (const ns of (k8s.namespaces || [])) {
-                if (ns.pods) {
-                    totalRunning += ns.pods.running || 0;
-                    totalPending += ns.pods.pending || 0;
-                    totalFailed += ns.pods.failed || 0;
-                }
-            }
-
-            document.getElementById('k8s-pods-running').textContent = totalRunning;
-            document.getElementById('k8s-pods-pending').textContent = totalPending;
-            document.getElementById('k8s-pods-failed').textContent = totalFailed;
-
-            // Color code pending/failed
-            const pendingStat = document.getElementById('k8s-pods-pending').parentElement;
-            pendingStat.className = `k8s-stat ${totalPending > 0 ? 'warning' : ''}`;
-
-            const failedStat = document.getElementById('k8s-pods-failed').parentElement;
-            failedStat.className = `k8s-stat ${totalFailed > 0 ? 'error' : ''}`;
-
-            // Nodes
-            const nodes = k8s.nodes || {};
-            document.getElementById('k8s-nodes-ready').textContent = `${nodes.ready || 0}/${nodes.total || 0}`;
-
-            const nodesStat = document.getElementById('k8s-nodes-ready').parentElement;
-            nodesStat.className = `k8s-stat ${nodes.not_ready > 0 ? 'error' : 'healthy'}`;
         }
 
         async function loadK8sAlerts() {

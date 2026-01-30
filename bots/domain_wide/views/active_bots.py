@@ -1,13 +1,15 @@
 """
-Active bots APIs for dashboard - bot-centric view with calendar event links.
+Active pod APIs for dashboard - K8s pod-centric view with live metrics.
 """
 import logging
 import os
-from datetime import timedelta
+import re
 
+from django.conf import settings
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views import View
+from datetime import timedelta
 
 from bots.models import Bot, BotStates
 
@@ -42,7 +44,6 @@ def _get_resource_limits():
     memory_request = os.getenv('BOT_MEMORY_REQUEST', '2Gi')
     memory_limit = os.getenv('BOT_MEMORY_LIMIT', '8Gi')
 
-    # Parse values
     def parse_cpu(val):
         val = str(val)
         if val.endswith('m'):
@@ -65,6 +66,51 @@ def _get_resource_limits():
         'memory_request_bytes': parse_memory(memory_request),
         'memory_limit_bytes': parse_memory(memory_limit),
     }
+
+
+def _parse_cpu(cpu_str):
+    """Parse CPU string to millicores."""
+    if not cpu_str:
+        return 0
+    cpu_str = str(cpu_str)
+    if cpu_str.endswith('m'):
+        return int(cpu_str[:-1])
+    elif cpu_str.endswith('n'):
+        return int(cpu_str[:-1]) // 1000000
+    else:
+        try:
+            return int(float(cpu_str) * 1000)
+        except ValueError:
+            return 0
+
+
+def _parse_memory(mem_str):
+    """Parse memory string to bytes."""
+    if not mem_str:
+        return 0
+    mem_str = str(mem_str)
+    multipliers = {
+        'Ki': 1024, 'Mi': 1024**2, 'Gi': 1024**3, 'Ti': 1024**4,
+        'K': 1000, 'M': 1000**2, 'G': 1000**3, 'T': 1000**4,
+    }
+    for suffix, mult in multipliers.items():
+        if mem_str.endswith(suffix):
+            try:
+                return int(float(mem_str[:-len(suffix)]) * mult)
+            except ValueError:
+                return 0
+    try:
+        return int(mem_str)
+    except ValueError:
+        return 0
+
+
+def _extract_bot_id_from_pod_name(pod_name):
+    """Extract bot_id from pod name. Format: bot-pod-XXXXX-bot_YYYYYY"""
+    match = re.search(r'(bot_[a-z0-9]+)', pod_name)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _get_bot_state_label(bot):
@@ -101,74 +147,142 @@ def _get_bot_state_label(bot):
     return BotStates(state).label if state in BotStates.values else f'State {state}'
 
 
-class ActiveBotsAPI(View):
-    """API for currently running/pending bots with calendar event info and resource usage."""
+class ActiveBotPodsAPI(View):
+    """API for active bot pods with live K8s metrics."""
 
     def get(self, request):
+        from bots.domain_wide.views.kubernetes import _init_kubernetes_client
+
         limits = _get_resource_limits()
+        namespace = getattr(settings, 'BOT_POD_NAMESPACE', 'attendee')
 
-        # Get running bots
-        running_bots = Bot.objects.filter(
-            state__in=[s.value for s in RUNNING_STATES]
-        ).select_related('calendar_event').order_by('-join_at')
+        running_pods = []
+        pending_pods = []
 
-        # Get pending bots
-        pending_bots = Bot.objects.filter(
-            state__in=[s.value for s in PENDING_STATES]
-        ).select_related('calendar_event').order_by('join_at')
+        try:
+            from kubernetes import client
 
-        bots_data = []
+            v1 = _init_kubernetes_client()
 
-        for bot in list(running_bots) + list(pending_bots):
-            # Get latest resource snapshot
-            latest_snapshot = bot.resource_snapshots.order_by('-created_at').first()
-            cpu_actual = None
-            memory_actual = None
-            if latest_snapshot and latest_snapshot.data:
-                cpu_actual = latest_snapshot.data.get('cpu_usage_millicores')
-                memory_actual_mb = latest_snapshot.data.get('ram_usage_megabytes')
-                if memory_actual_mb is not None:
-                    memory_actual = int(memory_actual_mb * 1024 * 1024)  # Convert MB to bytes
+            # Query pods with app=bot-pod label
+            pods = v1.list_namespaced_pod(
+                namespace=namespace,
+                label_selector='app=bot-pod'
+            )
 
-            # Get calendar event info
-            calendar_event = bot.calendar_event
-            meeting_name = None
-            calendar_event_id = None
-            if calendar_event:
-                meeting_name = calendar_event.name or 'Untitled Event'
-                calendar_event_id = calendar_event.object_id
+            # Get metrics from metrics-server
+            metrics_by_pod = {}
+            try:
+                custom_api = client.CustomObjectsApi()
+                pod_metrics = custom_api.list_namespaced_custom_object(
+                    group="metrics.k8s.io",
+                    version="v1beta1",
+                    namespace=namespace,
+                    plural="pods"
+                )
+                for pm in pod_metrics.get('items', []):
+                    pod_name = pm.get('metadata', {}).get('name')
+                    containers = pm.get('containers', [])
+                    total_cpu = 0
+                    total_memory = 0
+                    for c in containers:
+                        usage = c.get('usage', {})
+                        total_cpu += _parse_cpu(usage.get('cpu', '0'))
+                        total_memory += _parse_memory(usage.get('memory', '0'))
+                    metrics_by_pod[pod_name] = {
+                        'cpu_millicores': total_cpu,
+                        'memory_bytes': total_memory,
+                    }
+            except Exception as e:
+                logger.debug(f"Could not fetch pod metrics: {e}")
 
-            bots_data.append({
-                'object_id': bot.object_id,
-                'meeting_name': meeting_name,
-                'calendar_event_id': calendar_event_id,
-                'cpu_actual_millicores': cpu_actual,
-                'cpu_request_millicores': limits['cpu_request_millicores'],
-                'cpu_limit_millicores': limits['cpu_limit_millicores'],
-                'memory_actual_bytes': memory_actual,
-                'memory_request_bytes': limits['memory_request_bytes'],
-                'memory_limit_bytes': limits['memory_limit_bytes'],
-                'state': _get_bot_state_label(bot),
-                'state_raw': bot.state,
-                'is_running': bot.state in [s.value for s in RUNNING_STATES],
-                'join_at': bot.join_at.isoformat() if bot.join_at else None,
-            })
+            # Extract bot_ids to look up DB info
+            pod_bot_ids = []
+            for pod in pods.items:
+                bot_id = _extract_bot_id_from_pod_name(pod.metadata.name)
+                if bot_id:
+                    pod_bot_ids.append(bot_id)
+
+            # Query DB for bot info (calendar events, state)
+            bots_by_id = {}
+            if pod_bot_ids:
+                bots = Bot.objects.filter(
+                    object_id__in=pod_bot_ids
+                ).select_related('calendar_event')
+                for bot in bots:
+                    bots_by_id[bot.object_id] = bot
+
+            # Process each pod
+            for pod in pods.items:
+                pod_name = pod.metadata.name
+                phase = (pod.status.phase or '').lower()
+                bot_id = _extract_bot_id_from_pod_name(pod_name)
+
+                # Get metrics
+                metrics = metrics_by_pod.get(pod_name, {})
+                cpu_millicores = metrics.get('cpu_millicores')
+                memory_bytes = metrics.get('memory_bytes')
+
+                # Calculate percentages
+                cpu_pct = None
+                memory_pct = None
+                if cpu_millicores is not None and limits['cpu_limit_millicores'] > 0:
+                    cpu_pct = round((cpu_millicores / limits['cpu_limit_millicores']) * 100, 1)
+                if memory_bytes is not None and limits['memory_limit_bytes'] > 0:
+                    memory_pct = round((memory_bytes / limits['memory_limit_bytes']) * 100, 1)
+
+                # Get DB info if available
+                meeting_name = None
+                calendar_event_id = None
+                status = 'Running' if phase == 'running' else 'Pending'
+
+                bot = bots_by_id.get(bot_id)
+                if bot:
+                    if bot.calendar_event:
+                        meeting_name = bot.calendar_event.name or 'Untitled Event'
+                        calendar_event_id = bot.calendar_event.object_id
+                    status = _get_bot_state_label(bot)
+
+                pod_data = {
+                    'pod_name': pod_name,
+                    'bot_id': bot_id,
+                    'meeting_name': meeting_name,
+                    'calendar_event_id': calendar_event_id,
+                    'cpu_millicores': cpu_millicores,
+                    'cpu_pct': cpu_pct,
+                    'memory_bytes': memory_bytes,
+                    'memory_pct': memory_pct,
+                    'status': status,
+                }
+
+                if phase == 'running':
+                    running_pods.append(pod_data)
+                elif phase == 'pending':
+                    pending_pods.append(pod_data)
+
+        except Exception as e:
+            logger.exception(f"Failed to get K8s pod data: {e}")
 
         # Get bot pool status
         bot_pool = _get_bot_pool_status()
 
         return JsonResponse({
-            'bots': bots_data,
+            'running': running_pods,
+            'pending': pending_pods,
             'bot_pool': bot_pool,
-            'running_count': len(running_bots),
-            'pending_count': len(pending_bots),
             'limits': limits,
             'timestamp': timezone.now().isoformat(),
         })
 
 
+# Keep old API as alias for backwards compatibility
+class ActiveBotsAPI(ActiveBotPodsAPI):
+    """Backwards-compatible alias for ActiveBotPodsAPI."""
+    pass
+
+
 class CompletedBotsAPI(View):
-    """API for completed bots (ended today) with peak resource usage."""
+    """API for completed bots (ended today) with peak resource usage from DB."""
 
     def get(self, request):
         # Get date filter (default: today)
