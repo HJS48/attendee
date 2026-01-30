@@ -198,6 +198,7 @@ class MeetingSyncStatusAPI(View):
         supabase_meetings = {}
         result = None
         if client:
+            supabase_stats['available'] = True
             try:
                 bot_object_ids = list(ended_bots.values_list('object_id', flat=True))
 
@@ -219,9 +220,8 @@ class MeetingSyncStatusAPI(View):
                             supabase_stats['complete'] += 1
                         elif status == 'failed':
                             supabase_stats['failed'] += 1
-
-                    supabase_stats['available'] = True
             except Exception as e:
+                supabase_stats['available'] = False
                 logger.warning(f"Failed to fetch Supabase sync status: {e}")
 
         # Identify stuck meetings
