@@ -420,6 +420,74 @@
         .resource-bar-inline .fill.medium { background: #f59e0b; }
         .resource-bar-inline .fill.high { background: #ef4444; }
 
+        /* Active Bots Section */
+        .active-bots-table { font-size: 13px; }
+        .active-bots-table th { font-size: 12px; white-space: nowrap; }
+        .active-bots-table td { vertical-align: middle; }
+        .active-bots-table tbody tr { cursor: pointer; }
+        .active-bots-table tbody tr:hover { background: #f8fafc; }
+        .meeting-link {
+            color: #3b82f6;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .meeting-link:hover { text-decoration: underline; }
+        .resource-cell {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .resource-cell .actual { font-weight: 600; }
+        .resource-cell .limits { color: #888; }
+        .bot-pool-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .show-more-btn {
+            padding: 8px 16px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 12px;
+        }
+        .show-more-btn:hover { background: #e2e8f0; }
+
+        /* System Services (collapsible) */
+        .system-services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+        }
+        .system-service-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .system-service-item .name { font-weight: 500; flex: 1; }
+        .system-service-item .metrics { color: #666; font-family: monospace; font-size: 11px; }
+
+        /* Calendar Event Modal */
+        .event-modal-body { padding: 20px; }
+        .event-detail-row { display: flex; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+        .event-detail-row:last-child { border-bottom: none; }
+        .event-detail-label { width: 120px; color: #666; font-size: 13px; flex-shrink: 0; }
+        .event-detail-value { color: #333; font-size: 13px; }
+        .attendees-list { max-height: 150px; overflow-y: auto; }
+        .attendee-item { padding: 4px 0; font-size: 12px; color: #555; }
+
         /* Bot Detail Modal */
         .modal-overlay {
             position: fixed;
@@ -865,8 +933,60 @@
             </table>
         </div>
 
-        <!-- Resource Usage -->
+        <!-- Active Bots -->
         <div class="card">
+            <div class="card-header">
+                <h2>Active Bots <span class="count-badge" id="active-bots-count">0</span></h2>
+                <div class="bot-pool-status" id="bot-pool-status">
+                    Bot Pool: <span id="bot-pool-nodes">--</span>
+                </div>
+            </div>
+            <div id="active-bots-empty" style="display: none; padding: 20px; text-align: center; color: #888;">
+                No active bots at this time.
+            </div>
+            <table class="active-bots-table" id="active-bots-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Bot ID</th>
+                        <th>Meeting</th>
+                        <th>CPU (actual/req/lim)</th>
+                        <th>Memory (actual/req/lim)</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="active-bots-body">
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Completed Bots (Today) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Completed Bots (Today) <span class="count-badge" id="completed-bots-count">0</span></h2>
+                <button class="show-more-btn" id="show-more-completed" onclick="expandCompletedBots()" style="display: none;">Show all</button>
+            </div>
+            <div id="completed-bots-empty" style="display: none; padding: 20px; text-align: center; color: #888;">
+                No completed bots today.
+            </div>
+            <table class="active-bots-table" id="completed-bots-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Bot ID</th>
+                        <th>Meeting</th>
+                        <th>Peak CPU</th>
+                        <th>Peak Memory</th>
+                        <th>Outcome</th>
+                    </tr>
+                </thead>
+                <tbody id="completed-bots-body">
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Legacy Resource Usage (hidden, kept for backward compat) -->
+        <div class="card" style="display: none;">
             <div class="card-header">
                 <h2>Resource Usage</h2>
                 <div class="resource-controls">
@@ -933,6 +1053,37 @@
                     <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">CPU Usage Over Time</h4>
                     <div class="chart-container">
                         <canvas id="cpu-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Event Detail Modal -->
+        <div class="modal-overlay" id="calendar-event-modal" onclick="closeEventModal(event)">
+            <div class="modal-content" style="max-width: 500px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3 id="event-modal-title">Event Details</h3>
+                    <button class="modal-close" onclick="closeEventModal()">&times;</button>
+                </div>
+                <div class="event-modal-body">
+                    <div class="event-detail-row">
+                        <span class="event-detail-label">Time</span>
+                        <span class="event-detail-value" id="event-modal-time">--</span>
+                    </div>
+                    <div class="event-detail-row">
+                        <span class="event-detail-label">Calendar</span>
+                        <span class="event-detail-value" id="event-modal-calendar">--</span>
+                    </div>
+                    <div class="event-detail-row">
+                        <span class="event-detail-label">Meeting URL</span>
+                        <span class="event-detail-value"><a href="#" id="event-modal-url" target="_blank">--</a></span>
+                    </div>
+                    <div class="event-detail-row" style="align-items: flex-start;">
+                        <span class="event-detail-label">Attendees</span>
+                        <div class="event-detail-value">
+                            <div id="event-modal-attendees-count" style="margin-bottom: 4px;">--</div>
+                            <div class="attendees-list" id="event-modal-attendees"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1100,24 +1251,14 @@
                     </div>
                 </div>
 
-                <!-- Resource Bars -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                    <div class="resource-bar-container">
-                        <div class="resource-bar-label">
-                            <span>CPU Usage</span>
-                            <span id="k8s-cpu-pct">--%</span>
-                        </div>
-                        <div class="resource-bar">
-                            <div class="resource-bar-fill low" id="k8s-cpu-bar" style="width: 0%;"></div>
-                        </div>
-                    </div>
-                    <div class="resource-bar-container">
-                        <div class="resource-bar-label">
-                            <span>Memory Usage</span>
-                            <span id="k8s-mem-pct">--%</span>
-                        </div>
-                        <div class="resource-bar">
-                            <div class="resource-bar-fill low" id="k8s-mem-bar" style="width: 0%;"></div>
+                <!-- System Services (collapsible) -->
+                <div style="margin-bottom: 16px;">
+                    <h3 class="collapsible-header collapsed" onclick="toggleCollapsible('system-services')" style="font-size: 14px; color: #666; margin-bottom: 8px; cursor: pointer;">
+                        System Services
+                    </h3>
+                    <div id="system-services" class="collapsible-content collapsed">
+                        <div class="system-services-grid" id="system-services-grid">
+                            <div class="loading">Loading services...</div>
                         </div>
                     </div>
                 </div>
@@ -1299,7 +1440,8 @@
                 loadDateData(),
                 loadFailures(),
                 loadCalendarSync(),
-                loadResourceSummary(),
+                loadActiveBots(),
+                loadCompletedBots(),
                 loadMeetingSyncStatus(),
                 loadInfrastructure()
             ]);
@@ -2060,8 +2202,277 @@
 
         // Close modal on escape key
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeBotModal();
+            if (e.key === 'Escape') {
+                closeBotModal();
+                closeEventModal();
+            }
         });
+
+        // Active Bots
+        let allCompletedBots = [];
+
+        async function loadActiveBots() {
+            try {
+                const data = await fetch('/dashboard/api/bots/active/').then(r => r.json());
+                const bots = data.bots || [];
+                const limits = data.limits || {};
+
+                // Update counts
+                document.getElementById('active-bots-count').textContent =
+                    `${data.running_count || 0} running, ${data.pending_count || 0} pending`;
+
+                // Update bot pool status
+                const pool = data.bot_pool || {};
+                if (pool.active_nodes !== null) {
+                    document.getElementById('bot-pool-nodes').textContent =
+                        `${pool.active_nodes}/${pool.max_nodes} nodes active`;
+                } else {
+                    document.getElementById('bot-pool-nodes').textContent = '--';
+                }
+
+                const table = document.getElementById('active-bots-table');
+                const empty = document.getElementById('active-bots-empty');
+                const tbody = document.getElementById('active-bots-body');
+
+                if (bots.length === 0) {
+                    table.style.display = 'none';
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                table.style.display = 'table';
+                empty.style.display = 'none';
+
+                tbody.innerHTML = bots.map(bot => {
+                    // Format CPU
+                    const cpuActual = bot.cpu_actual_millicores !== null ? bot.cpu_actual_millicores : '--';
+                    const cpuReq = (limits.cpu_request_millicores / 1000).toFixed(1);
+                    const cpuLim = (limits.cpu_limit_millicores / 1000).toFixed(1);
+
+                    // Format Memory (convert bytes to Gi)
+                    const memActual = bot.memory_actual_bytes !== null
+                        ? (bot.memory_actual_bytes / (1024*1024*1024)).toFixed(1)
+                        : '--';
+                    const memReq = (limits.memory_request_bytes / (1024*1024*1024)).toFixed(0);
+                    const memLim = (limits.memory_limit_bytes / (1024*1024*1024)).toFixed(0);
+
+                    // Meeting link
+                    const meetingHtml = bot.meeting_name && bot.calendar_event_id
+                        ? `<a href="#" class="meeting-link" onclick="showCalendarEvent('${bot.calendar_event_id}'); return false;">${escapeHtml(bot.meeting_name)} ↗</a>`
+                        : bot.meeting_name
+                            ? escapeHtml(bot.meeting_name)
+                            : '<span style="color: #888;">—</span>';
+
+                    // Status badge
+                    const statusClass = bot.is_running ? 'badge-warning' : 'badge-info';
+
+                    return `
+                        <tr onclick="showBotResources('${bot.object_id}')">
+                            <td><code>${bot.object_id.substring(0, 16)}...</code></td>
+                            <td>${meetingHtml}</td>
+                            <td class="resource-cell">
+                                <span class="actual">${cpuActual}</span> / ${cpuReq} / ${cpuLim}
+                            </td>
+                            <td class="resource-cell">
+                                <span class="actual">${memActual}</span> / ${memReq} / ${memLim}Gi
+                            </td>
+                            <td><span class="badge ${statusClass}">${escapeHtml(bot.state)}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load active bots:', error);
+            }
+        }
+
+        async function loadCompletedBots(showAll = false) {
+            try {
+                const data = await fetch('/dashboard/api/bots/completed/').then(r => r.json());
+                allCompletedBots = data.bots || [];
+                const totalCount = data.total_count || 0;
+
+                document.getElementById('completed-bots-count').textContent = `${totalCount} today`;
+
+                const table = document.getElementById('completed-bots-table');
+                const empty = document.getElementById('completed-bots-empty');
+                const tbody = document.getElementById('completed-bots-body');
+                const showMoreBtn = document.getElementById('show-more-completed');
+
+                if (allCompletedBots.length === 0) {
+                    table.style.display = 'none';
+                    empty.style.display = 'block';
+                    showMoreBtn.style.display = 'none';
+                    return;
+                }
+
+                table.style.display = 'table';
+                empty.style.display = 'none';
+
+                // Show first 5 or all
+                const botsToShow = showAll ? allCompletedBots : allCompletedBots.slice(0, 5);
+                const hiddenCount = allCompletedBots.length - 5;
+
+                if (hiddenCount > 0 && !showAll) {
+                    showMoreBtn.style.display = 'inline-block';
+                    showMoreBtn.textContent = `Show ${hiddenCount} more`;
+                } else {
+                    showMoreBtn.style.display = 'none';
+                }
+
+                tbody.innerHTML = botsToShow.map(bot => {
+                    // Format peak CPU with percentage
+                    const cpuPct = bot.peak_cpu_pct || 0;
+                    const cpuClass = cpuPct > 90 ? 'high' : cpuPct > 70 ? 'medium' : 'low';
+
+                    // Format peak memory with percentage
+                    const memMb = bot.peak_memory_bytes ? Math.round(bot.peak_memory_bytes / (1024*1024)) : 0;
+                    const memGi = (bot.peak_memory_bytes / (1024*1024*1024)).toFixed(1);
+                    const memPct = bot.peak_memory_pct || 0;
+                    const memClass = memPct > 90 ? 'high' : memPct > 70 ? 'medium' : 'low';
+
+                    // Meeting link
+                    const meetingHtml = bot.meeting_name && bot.calendar_event_id
+                        ? `<a href="#" class="meeting-link" onclick="showCalendarEvent('${bot.calendar_event_id}'); return false;">${escapeHtml(bot.meeting_name)} ↗</a>`
+                        : bot.meeting_name
+                            ? escapeHtml(bot.meeting_name)
+                            : '<span style="color: #888;">—</span>';
+
+                    // Outcome badge
+                    const outcomeClass = bot.outcome === 'Completed' ? 'badge-success'
+                        : bot.outcome === 'Crashed' || bot.outcome === 'Failed' ? 'badge-error'
+                        : 'badge-secondary';
+
+                    return `
+                        <tr onclick="showBotResources('${bot.object_id}')">
+                            <td><code>${bot.object_id.substring(0, 16)}...</code></td>
+                            <td>${meetingHtml}</td>
+                            <td>
+                                <span class="resource-bar-inline"><span class="fill ${cpuClass}" style="width: ${Math.min(cpuPct, 100)}%"></span></span>
+                                ${bot.peak_cpu_millicores}m (${cpuPct}%)
+                            </td>
+                            <td>
+                                <span class="resource-bar-inline"><span class="fill ${memClass}" style="width: ${Math.min(memPct, 100)}%"></span></span>
+                                ${memGi}Gi (${memPct}%)
+                            </td>
+                            <td><span class="badge ${outcomeClass}">${escapeHtml(bot.outcome)}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load completed bots:', error);
+            }
+        }
+
+        function expandCompletedBots() {
+            loadCompletedBots(true);
+        }
+
+        // Calendar Event Modal
+        async function showCalendarEvent(eventId) {
+            const modal = document.getElementById('calendar-event-modal');
+            modal.classList.add('visible');
+
+            // Reset fields
+            document.getElementById('event-modal-title').textContent = 'Loading...';
+            document.getElementById('event-modal-time').textContent = '--';
+            document.getElementById('event-modal-calendar').textContent = '--';
+            document.getElementById('event-modal-url').textContent = '--';
+            document.getElementById('event-modal-url').href = '#';
+            document.getElementById('event-modal-attendees-count').textContent = '--';
+            document.getElementById('event-modal-attendees').innerHTML = '';
+
+            try {
+                const data = await fetch(`/dashboard/api/bots/calendar-event/${eventId}/`).then(r => r.json());
+
+                if (data.error) {
+                    document.getElementById('event-modal-title').textContent = 'Event not found';
+                    return;
+                }
+
+                document.getElementById('event-modal-title').textContent = data.name || 'Untitled Event';
+
+                // Format time
+                if (data.start_time) {
+                    const start = new Date(data.start_time);
+                    const end = data.end_time ? new Date(data.end_time) : null;
+                    const timeStr = start.toLocaleString([], {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    const endStr = end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    document.getElementById('event-modal-time').textContent = endStr ? `${timeStr} - ${endStr}` : timeStr;
+                }
+
+                document.getElementById('event-modal-calendar').textContent = data.calendar_owner || '--';
+
+                if (data.meeting_url) {
+                    document.getElementById('event-modal-url').textContent = data.meeting_url;
+                    document.getElementById('event-modal-url').href = data.meeting_url;
+                }
+
+                // Attendees
+                document.getElementById('event-modal-attendees-count').textContent =
+                    `${data.attendees_count} attendee${data.attendees_count !== 1 ? 's' : ''}`;
+
+                const attendeesList = document.getElementById('event-modal-attendees');
+                if (data.attendees && data.attendees.length > 0) {
+                    attendeesList.innerHTML = data.attendees.map(a => {
+                        const email = typeof a === 'string' ? a : (a.email || a.displayName || 'Unknown');
+                        return `<div class="attendee-item">${escapeHtml(email)}</div>`;
+                    }).join('');
+                } else {
+                    attendeesList.innerHTML = '<div class="attendee-item" style="color: #888;">No attendees</div>';
+                }
+
+            } catch (error) {
+                console.error('Failed to load calendar event:', error);
+                document.getElementById('event-modal-title').textContent = 'Error loading event';
+            }
+        }
+
+        function closeEventModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('calendar-event-modal').classList.remove('visible');
+        }
+
+        // System Services
+        async function loadSystemServices() {
+            try {
+                const data = await fetch('/dashboard/api/k8s/system-pods/').then(r => r.json());
+                const pods = data.pods || [];
+
+                const grid = document.getElementById('system-services-grid');
+                if (pods.length === 0) {
+                    grid.innerHTML = '<div style="color: #888; font-size: 13px;">No system services found</div>';
+                    return;
+                }
+
+                grid.innerHTML = pods.map(pod => {
+                    const statusDot = pod.ready ? 'status-green' : 'status-yellow';
+                    const cpuStr = pod.cpu_millicores !== null ? `${(pod.cpu_millicores / 1000).toFixed(1)} CPU` : '';
+                    const memStr = pod.memory_display || '';
+                    const metricsStr = [cpuStr, memStr].filter(Boolean).join(' | ');
+
+                    return `
+                        <div class="system-service-item">
+                            <span class="status-dot ${statusDot}"></span>
+                            <span class="name">${escapeHtml(pod.name)}</span>
+                            <span class="metrics">${metricsStr || pod.status}</span>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load system services:', error);
+                document.getElementById('system-services-grid').innerHTML =
+                    '<div style="color: #888; font-size: 13px;">Could not load services</div>';
+            }
+        }
 
         // Infrastructure Status
         let currentMode = 'docker';
@@ -2103,6 +2514,7 @@
                     loadK8sPods();
                     loadK8sDeployments();
                     loadK8sEvents();
+                    loadSystemServices();
 
                     // Load Hetzner Cloud data
                     loadHetznerData();
@@ -2218,28 +2630,6 @@
 
             const nodesStat = document.getElementById('k8s-nodes-ready').parentElement;
             nodesStat.className = `k8s-stat ${nodes.not_ready > 0 ? 'error' : 'healthy'}`;
-
-            // Resource bars
-            const resources = k8s.resource_usage;
-            if (resources) {
-                // CPU
-                const cpuPct = resources.cpu_allocatable_millicores > 0
-                    ? (resources.cpu_requested_millicores / resources.cpu_allocatable_millicores) * 100
-                    : 0;
-                document.getElementById('k8s-cpu-pct').textContent = `${cpuPct.toFixed(1)}%`;
-                const cpuBar = document.getElementById('k8s-cpu-bar');
-                cpuBar.style.width = `${Math.min(cpuPct, 100)}%`;
-                cpuBar.className = `resource-bar-fill ${cpuPct > 85 ? 'high' : cpuPct > 60 ? 'medium' : 'low'}`;
-
-                // Memory
-                const memPct = resources.memory_allocatable_bytes > 0
-                    ? (resources.memory_requested_bytes / resources.memory_allocatable_bytes) * 100
-                    : 0;
-                document.getElementById('k8s-mem-pct').textContent = `${memPct.toFixed(1)}%`;
-                const memBar = document.getElementById('k8s-mem-bar');
-                memBar.style.width = `${Math.min(memPct, 100)}%`;
-                memBar.className = `resource-bar-fill ${memPct > 85 ? 'high' : memPct > 60 ? 'medium' : 'low'}`;
-            }
         }
 
         async function loadK8sAlerts() {

@@ -32,10 +32,17 @@ urlpatterns = [
     path('api/k8s/events/', views.KubernetesEventsAPI.as_view(), name='api-k8s-events'),
     path('api/k8s/deployments/', views.KubernetesDeploymentsAPI.as_view(), name='api-k8s-deployments'),
     path('api/k8s/metrics/', views.KubernetesResourceMetricsAPI.as_view(), name='api-k8s-metrics'),
+    path('api/k8s/system-pods/', views.SystemPodsAPI.as_view(), name='api-k8s-system-pods'),
 
     # Resource Monitoring APIs
     path('api/resources/summary/', views.ResourceSummaryAPI.as_view(), name='api-resource-summary'),
     path('api/resources/bot/', views.BotResourcesAPI.as_view(), name='api-bot-resources'),
+
+    # Active Bots APIs
+    path('api/bots/active/', views.ActiveBotsAPI.as_view(), name='api-bots-active'),
+    path('api/bots/completed/', views.CompletedBotsAPI.as_view(), name='api-bots-completed'),
+    path('api/bots/calendar-event/<str:event_id>/', views.CalendarEventDetailAPI.as_view(), name='api-calendar-event'),
+    path('api/bots/pool-status/', views.BotPoolStatusAPI.as_view(), name='api-bots-pool-status'),
 
     # Hetzner Cloud APIs
     path('api/hetzner/node-pools/', views.HetznerNodePoolsAPI.as_view(), name='api-hetzner-node-pools'),

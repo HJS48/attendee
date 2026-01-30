@@ -35,6 +35,7 @@ from .kubernetes import (
     KubernetesEventsAPI,
     KubernetesDeploymentsAPI,
     KubernetesResourceMetricsAPI,
+    SystemPodsAPI,
 )
 
 from .logs import LogStreamView
@@ -51,6 +52,13 @@ from .system_health import (
 from .resources import (
     ResourceSummaryAPI,
     BotResourcesAPI,
+)
+
+from .active_bots import (
+    ActiveBotsAPI,
+    CompletedBotsAPI,
+    CalendarEventDetailAPI,
+    BotPoolStatusAPI,
 )
 
 from .hetzner import (
@@ -88,6 +96,7 @@ __all__ = [
     'KubernetesEventsAPI',
     'KubernetesDeploymentsAPI',
     'KubernetesResourceMetricsAPI',
+    'SystemPodsAPI',
     # Logs
     'LogStreamView',
     # System Health
@@ -100,6 +109,11 @@ __all__ = [
     # Resources
     'ResourceSummaryAPI',
     'BotResourcesAPI',
+    # Active Bots
+    'ActiveBotsAPI',
+    'CompletedBotsAPI',
+    'CalendarEventDetailAPI',
+    'BotPoolStatusAPI',
     # Hetzner
     'HetznerNodePoolsAPI',
     'HetznerAutoscalerStatusAPI',

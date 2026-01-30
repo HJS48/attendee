@@ -1036,3 +1036,121 @@ class KubernetesResourceMetricsAPI(View):
                 'node_metrics': [],
                 'pod_metrics': [],
             }, status=500)
+
+
+class SystemPodsAPI(View):
+    """API for system (non-bot) pods with resource usage."""
+
+    # Known system pod name prefixes
+    SYSTEM_POD_PREFIXES = [
+        'attendee-api',
+        'attendee-worker',
+        'attendee-scheduler',
+        'attendee-beat',
+        'postgres',
+        'redis',
+        'webpage-streamer',
+    ]
+
+    def get(self, request):
+        from kubernetes import client
+
+        try:
+            v1 = _init_kubernetes_client()
+
+            namespace = getattr(settings, 'BOT_POD_NAMESPACE', 'attendee')
+
+            pods = v1.list_namespaced_pod(namespace=namespace)
+            system_pods = []
+
+            # Try to get metrics if available
+            metrics_by_pod = {}
+            try:
+                custom_api = client.CustomObjectsApi()
+                pod_metrics = custom_api.list_namespaced_custom_object(
+                    group="metrics.k8s.io",
+                    version="v1beta1",
+                    namespace=namespace,
+                    plural="pods"
+                )
+                for pm in pod_metrics.get('items', []):
+                    pod_name = pm.get('metadata', {}).get('name')
+                    containers = pm.get('containers', [])
+                    total_cpu = 0
+                    total_memory = 0
+                    for c in containers:
+                        usage = c.get('usage', {})
+                        total_cpu += _parse_cpu(usage.get('cpu', '0'))
+                        total_memory += _parse_memory(usage.get('memory', '0'))
+                    metrics_by_pod[pod_name] = {
+                        'cpu_millicores': total_cpu,
+                        'memory_bytes': total_memory,
+                    }
+            except Exception:
+                pass  # Metrics server may not be available
+
+            for pod in pods.items:
+                pod_name = pod.metadata.name
+
+                # Skip bot pods (they start with 'bot-')
+                if pod_name.startswith('bot-'):
+                    continue
+
+                # Check if it's a known system pod
+                is_system = False
+                service_name = pod_name
+                for prefix in self.SYSTEM_POD_PREFIXES:
+                    if pod_name.startswith(prefix):
+                        is_system = True
+                        service_name = prefix.replace('attendee-', '').capitalize()
+                        break
+
+                if not is_system:
+                    continue
+
+                # Get pod status
+                phase = pod.status.phase or 'Unknown'
+                ready = False
+                for cs in (pod.status.container_statuses or []):
+                    if cs.ready:
+                        ready = True
+                        break
+
+                status = 'Ready' if ready and phase == 'Running' else phase
+
+                # Get metrics if available
+                metrics = metrics_by_pod.get(pod_name, {})
+
+                # Format memory nicely
+                memory_bytes = metrics.get('memory_bytes', 0)
+                if memory_bytes >= 1024 * 1024 * 1024:
+                    memory_str = f"{memory_bytes / (1024*1024*1024):.1f}Gi"
+                elif memory_bytes >= 1024 * 1024:
+                    memory_str = f"{memory_bytes / (1024*1024):.0f}Mi"
+                else:
+                    memory_str = f"{memory_bytes / 1024:.0f}Ki"
+
+                system_pods.append({
+                    'name': service_name,
+                    'pod_name': pod_name,
+                    'cpu_millicores': metrics.get('cpu_millicores'),
+                    'memory_bytes': memory_bytes,
+                    'memory_display': memory_str if memory_bytes > 0 else None,
+                    'status': status,
+                    'ready': ready,
+                })
+
+            # Sort by service name
+            system_pods.sort(key=lambda x: x['name'])
+
+            return JsonResponse({
+                'pods': system_pods,
+                'timestamp': timezone.now().isoformat(),
+            })
+
+        except Exception as e:
+            logger.exception(f"Failed to get system pods: {e}")
+            return JsonResponse({
+                'error': str(e),
+                'pods': [],
+            }, status=500)
