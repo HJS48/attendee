@@ -158,12 +158,30 @@ def _create_meeting_metadata_impl(bot_id: str):
 
     event = bot.calendar_event
 
+    # Check if meeting already exists with transcript complete (race condition guard)
+    # Phase 2 may have already run if transcription completed quickly
+    from .supabase_client import get_supabase_client
+    client = get_supabase_client()
+    existing_status = None
+    if client:
+        try:
+            existing = client.table('meetings').select(
+                'transcript_status'
+            ).eq('attendee_bot_id', str(bot.object_id)).execute()
+            if existing.data:
+                existing_status = existing.data[0].get('transcript_status')
+                if existing_status == 'complete':
+                    logger.info(f"Meeting for bot {bot_id} already has transcript_status=complete, skipping Phase 1 overwrite")
+                    return {'status': 'skipped', 'reason': 'already complete'}
+        except Exception as e:
+            logger.debug(f"Could not check existing meeting status: {e}")
+
     # Build meeting metadata for Supabase (no transcript yet)
     meeting_data = {
         'attendee_bot_id': str(bot.object_id),
         'meeting_url': bot.meeting_url,
         'title': event.name if event and event.name else '',
-        'transcript_status': 'pending',  # Will be updated when transcript is ready
+        'transcript_status': existing_status or 'pending',  # Preserve existing status if any
     }
 
     # Get recording if available (for timestamps)
