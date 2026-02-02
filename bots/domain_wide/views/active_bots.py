@@ -106,10 +106,19 @@ def _parse_memory(mem_str):
 
 
 def _extract_bot_id_from_pod_name(pod_name):
-    """Extract bot_id from pod name. Format: bot-pod-XXXXX-bot_YYYYYY"""
-    match = re.search(r'(bot_[a-zA-Z0-9]+)', pod_name, re.IGNORECASE)
+    """
+    Extract bot_id from pod name.
+    Format: bot-pod-{id}-bot-{object_id_without_prefix}
+    Example: bot-pod-31279-bot-ihkmphklu20clt07 -> bot_ihkMpHKLU20ClT07
+
+    The object_id in pod name has _ replaced with - and is lowercased.
+    We extract it and convert back to bot_ prefix format for DB lookup.
+    """
+    # Match: bot-pod-{numeric_id}-bot-{alphanum}
+    match = re.search(r'bot-pod-\d+-bot-([a-z0-9]+)', pod_name, re.IGNORECASE)
     if match:
-        return match.group(1)
+        # Convert back to bot_ format (DB lookup is case-insensitive)
+        return f"bot_{match.group(1)}"
     return None
 
 
