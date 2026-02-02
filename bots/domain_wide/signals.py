@@ -59,7 +59,11 @@ def auto_create_bot_for_event(sender, instance, created, **kwargs):
     ).exclude(state__in=[BotStates.FATAL_ERROR, BotStates.ENDED]).first()
 
     if active_bot:
-        logger.debug(f"Active bot {active_bot.object_id} already exists for URL+date")
+        # Link orphan bot to this event if it has no calendar_event
+        if not active_bot.calendar_event:
+            active_bot.calendar_event = instance
+            active_bot.save(update_fields=['calendar_event'])
+            logger.info(f"Linked orphan bot {active_bot.object_id} to event {instance.object_id}")
         return
 
     # Check if an Ended bot exists that we can reactivate
