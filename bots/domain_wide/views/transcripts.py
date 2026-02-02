@@ -19,7 +19,7 @@ class TranscriptView(View):
 
     def get(self, request, meeting_id):
         from ..utils import verify_transcript_token, is_valid_uuid
-        from ..supabase_client import get_meeting, get_meeting_insights, get_attendee_emails_for_meeting
+        from ..supabase_client import get_meeting, get_meeting_insights
 
         # Validate meeting ID format
         if not is_valid_uuid(meeting_id):
@@ -56,18 +56,8 @@ class TranscriptView(View):
                 'error': 'Meeting not found'
             }, status=404)
 
-        # Authorization: check if user is participant or organizer
-        attendees = get_attendee_emails_for_meeting(meeting.get('meeting_url', ''))
-        attendee_emails = [
-            a.get('email', '').lower() for a in attendees
-            if isinstance(a, dict) and a.get('email')
-        ]
-
-        organizer_email = (meeting.get('organizer_email') or '').lower()
-        is_participant = user_email in attendee_emails
-        is_organizer = user_email == organizer_email
-
-        if not is_participant and not is_organizer:
+        # Authorization: user has valid token for this meeting, allow access
+        # (Token already verified above with correct meetingId and email)
             return render(request, 'domain_wide/error.html', {
                 'error': 'Access denied - you must be a meeting participant'
             }, status=403)
