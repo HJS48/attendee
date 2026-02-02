@@ -107,7 +107,7 @@ def _parse_memory(mem_str):
 
 def _extract_bot_id_from_pod_name(pod_name):
     """Extract bot_id from pod name. Format: bot-pod-XXXXX-bot_YYYYYY"""
-    match = re.search(r'(bot_[a-z0-9]+)', pod_name)
+    match = re.search(r'(bot_[a-zA-Z0-9]+)', pod_name, re.IGNORECASE)
     if match:
         return match.group(1)
     return None
@@ -204,13 +204,17 @@ class ActiveBotPodsAPI(View):
                     pod_bot_ids.append(bot_id)
 
             # Query DB for bot info (calendar events, state)
+            # Note: pod names have lowercase bot_ids, DB has mixed case
             bots_by_id = {}
             if pod_bot_ids:
+                # Use iregex for case-insensitive matching
+                regex_pattern = '|'.join(f'^{bid}$' for bid in pod_bot_ids)
                 bots = Bot.objects.filter(
-                    object_id__in=pod_bot_ids
+                    object_id__iregex=regex_pattern
                 ).select_related('calendar_event')
                 for bot in bots:
-                    bots_by_id[bot.object_id] = bot
+                    # Store by lowercase key for lookup
+                    bots_by_id[bot.object_id.lower()] = bot
 
             # Process each pod
             for pod in pods.items:
@@ -231,13 +235,15 @@ class ActiveBotPodsAPI(View):
                 if memory_bytes is not None and limits['memory_limit_bytes'] > 0:
                     memory_pct = round((memory_bytes / limits['memory_limit_bytes']) * 100, 1)
 
-                # Get DB info if available
+                # Get DB info if available (lookup by lowercase key)
                 meeting_name = None
                 calendar_event_id = None
                 status = 'Running' if phase == 'running' else 'Pending'
+                actual_bot_id = bot_id  # Will be updated if found in DB
 
-                bot = bots_by_id.get(bot_id)
+                bot = bots_by_id.get(bot_id.lower() if bot_id else None)
                 if bot:
+                    actual_bot_id = bot.object_id  # Use actual case from DB
                     if bot.calendar_event:
                         meeting_name = bot.calendar_event.name or 'Untitled Event'
                         calendar_event_id = bot.calendar_event.object_id
@@ -245,7 +251,7 @@ class ActiveBotPodsAPI(View):
 
                 pod_data = {
                     'pod_name': pod_name,
-                    'bot_id': bot_id,
+                    'bot_id': actual_bot_id,
                     'meeting_name': meeting_name,
                     'calendar_event_id': calendar_event_id,
                     'cpu_millicores': cpu_millicores,

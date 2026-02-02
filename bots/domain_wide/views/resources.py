@@ -134,9 +134,9 @@ class BotResourcesAPI(View):
             return JsonResponse({'error': 'bot_id parameter required'}, status=400)
 
         try:
-            # Support both numeric ID and object_id
-            if bot_id.startswith('bot_'):
-                bot = Bot.objects.get(object_id=bot_id)
+            # Support both numeric ID and object_id (case-insensitive)
+            if bot_id.startswith('bot_') or bot_id.startswith('bot-'):
+                bot = Bot.objects.get(object_id__iexact=bot_id)
             else:
                 bot = Bot.objects.get(id=int(bot_id))
         except (Bot.DoesNotExist, ValueError):
