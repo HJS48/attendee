@@ -14,8 +14,6 @@ from .dashboard import (
 
 from .webhooks import GoogleCalendarWebhook
 
-from .transcripts import TranscriptView
-
 from .oauth import (
     GoogleOAuthStart,
     GoogleOAuthCallback,
@@ -78,8 +76,6 @@ __all__ = [
     'EventsBotListAPI',
     # Webhooks
     'GoogleCalendarWebhook',
-    # Transcripts
-    'TranscriptView',
     # OAuth
     'GoogleOAuthStart',
     'GoogleOAuthCallback',

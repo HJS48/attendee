@@ -64,7 +64,4 @@ urlpatterns = [
     # Microsoft OAuth
     path('auth/microsoft/', views.MicrosoftOAuthStart.as_view(), name='microsoft-oauth-start'),
     path('auth/microsoft/callback/', views.MicrosoftOAuthCallback.as_view(), name='microsoft-oauth-callback'),
-
-    # Transcript Viewer
-    path('transcripts/<str:meeting_id>/', views.TranscriptView.as_view(), name='transcript-view'),
 ]

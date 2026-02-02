@@ -2,113 +2,16 @@
 Utility functions for domain-wide integration.
 
 Includes:
-- Transcript access token generation/verification
 - Encryption utilities for OAuth tokens
+- Validation helpers
 """
 import os
-import json
-import hmac
-import hashlib
 import base64
-import time
 import logging
-from typing import Optional
 from django.conf import settings
 from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Transcript Access Tokens
-# =============================================================================
-
-def get_transcript_token_secret() -> str:
-    """Get the secret key for transcript tokens."""
-    return (
-        getattr(settings, 'TRANSCRIPT_TOKEN_SECRET', None)
-        or os.getenv('TRANSCRIPT_TOKEN_SECRET')
-        or os.getenv('WEBHOOK_SECRET')  # Fallback to webhook secret
-        or 'insecure-default-key'
-    )
-
-
-def create_transcript_token(meeting_id: str, email: str, expires_days: int = 30) -> str:
-    """
-    Create a signed token for transcript access.
-
-    Format: base64(payload).signature
-    Payload: {"meetingId": "...", "email": "...", "exp": timestamp}
-    """
-    secret = get_transcript_token_secret()
-    exp = int(time.time() * 1000) + (expires_days * 24 * 60 * 60 * 1000)
-
-    payload = json.dumps({
-        'meetingId': meeting_id,
-        'email': email.lower(),
-        'exp': exp
-    })
-
-    signature = hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).digest()
-
-    payload_b64 = base64.urlsafe_b64encode(payload.encode()).decode().rstrip('=')
-    sig_b64 = base64.urlsafe_b64encode(signature).decode().rstrip('=')
-
-    return f"{payload_b64}.{sig_b64}"
-
-
-def verify_transcript_token(token: str) -> Optional[dict]:
-    """
-    Verify a transcript access token.
-
-    Returns payload dict if valid, None if invalid/expired.
-    """
-    try:
-        parts = token.split('.')
-        if len(parts) != 2:
-            return None
-
-        payload_b64, sig_b64 = parts
-        secret = get_transcript_token_secret()
-
-        # Decode payload (add padding if needed)
-        padding = 4 - len(payload_b64) % 4
-        if padding != 4:
-            payload_b64 += '=' * padding
-        payload = base64.urlsafe_b64decode(payload_b64).decode()
-
-        # Verify signature
-        expected_sig = hmac.new(
-            secret.encode(),
-            payload.encode(),
-            hashlib.sha256
-        ).digest()
-
-        # Decode provided signature
-        padding = 4 - len(sig_b64) % 4
-        if padding != 4:
-            sig_b64 += '=' * padding
-        provided_sig = base64.urlsafe_b64decode(sig_b64)
-
-        if not hmac.compare_digest(expected_sig, provided_sig):
-            logger.warning("Transcript token signature mismatch")
-            return None
-
-        # Parse and check expiry
-        data = json.loads(payload)
-        if data.get('exp', 0) < int(time.time() * 1000):
-            logger.warning("Transcript token expired")
-            return None
-
-        return data
-
-    except Exception as e:
-        logger.warning(f"Failed to verify transcript token: {e}")
-        return None
 
 
 # =============================================================================
