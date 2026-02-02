@@ -52,8 +52,10 @@ class WebBotAdapter(BotAdapter):
         video_frame_size: tuple[int, int],
         record_chat_messages_when_paused: bool,
         disable_incoming_video: bool,
+        bot_object_id: str = None,
     ):
         self.display_name = display_name
+        self.bot_object_id = bot_object_id
         self.send_message_callback = send_message_callback
         self.add_audio_chunk_callback = add_audio_chunk_callback
         self.add_mixed_audio_chunk_callback = add_mixed_audio_chunk_callback

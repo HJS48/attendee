@@ -2,6 +2,7 @@ import logging
 
 from celery import shared_task
 
+from bots.activity_logger import set_bot_start_time
 from bots.launch_bot_utils import launch_bot
 from bots.models import Bot, BotEventManager, BotEventSubTypes, BotEventTypes, BotStates
 
@@ -29,6 +30,7 @@ def launch_scheduled_bot_sync(bot_id: int, bot_join_at: str):
 
     logger.info(f"Transitioning bot {bot_id} ({bot.object_id}) to STAGED")
     BotEventManager.create_event(bot=bot, event_type=BotEventTypes.STAGED, event_metadata={"join_at": bot_join_at})
+    set_bot_start_time(bot.object_id)
     launch_bot(bot)
 
 

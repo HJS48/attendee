@@ -2926,3 +2926,67 @@ class BotResourceSnapshot(models.Model):
 
     def __str__(self):
         return f"Resource snapshot for {self.bot.object_id} at {self.created_at}"
+
+
+class BotActivityLog(models.Model):
+    """
+    Lightweight activity log for debugging bot behavior.
+    Captures UI milestones, errors, and other diagnostic events.
+    """
+
+    class ActivityType(models.IntegerChoices):
+        # Join flow milestones
+        UI_NAVIGATED_TO_URL = 1, "Navigated to meeting URL"
+        UI_MEETING_PAGE_LOADED = 2, "Meeting page loaded"
+        UI_FOUND_JOIN_BUTTON = 3, "Found join button"
+        UI_CLICKED_JOIN_BUTTON = 4, "Clicked join button"
+        UI_ASKING_TO_BE_LET_IN = 5, "Asking to be let in (waiting room)"
+        UI_WAITING_FOR_HOST = 6, "Waiting for host to start meeting"
+        UI_ADMITTED_TO_MEETING = 7, "Admitted to meeting"
+        UI_CAPTIONS_ENABLED = 8, "Captions enabled"
+
+        # Error conditions detected
+        UI_DETECTED_DENIED = 10, "Detected: Request denied"
+        UI_DETECTED_NO_RESPONSE = 11, "Detected: No one responded"
+        UI_DETECTED_MEETING_NOT_FOUND = 12, "Detected: Meeting not found"
+        UI_DETECTED_LOGIN_REQUIRED = 13, "Detected: Login required"
+        UI_DETECTED_BLOCKED = 14, "Detected: Blocked by Google"
+        UI_DETECTED_CAPTCHA = 15, "Detected: Captcha challenge"
+
+        # Other milestones
+        UI_LOGIN_STARTED = 20, "Login flow started"
+        UI_LOGIN_COMPLETED = 21, "Login flow completed"
+        UI_LAYOUT_SET = 22, "Layout configured"
+        UI_SCREENSHOT_CAPTURED = 23, "Screenshot captured"
+
+        # Generic
+        UI_ERROR = 99, "UI error occurred"
+
+    bot = models.ForeignKey(
+        Bot,
+        on_delete=models.CASCADE,
+        related_name='activity_logs'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    activity_type = models.IntegerField(choices=ActivityType.choices)
+
+    # Optional context
+    message = models.CharField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    # For timing analysis
+    elapsed_ms = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Milliseconds since bot staged"
+    )
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['bot', 'created_at']),
+            models.Index(fields=['activity_type', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.bot.object_id} - {self.get_activity_type_display()}"

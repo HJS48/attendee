@@ -9,8 +9,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from bots.activity_logger import log_activity
 from bots.bot_sso_utils import get_google_meet_set_cookie_url
-from bots.models import RecordingViews
+from bots.models import BotActivityLog, RecordingViews
 from bots.web_bot_adapter.ui_methods import UiCouldNotClickElementException, UiCouldNotJoinMeetingWaitingForHostException, UiCouldNotJoinMeetingWaitingRoomTimeoutException, UiCouldNotLocateElementException, UiLoginAttemptFailedException, UiLoginRequiredException, UiMeetingNotFoundException, UiRequestToJoinDeniedException, UiRetryableExpectedException
 
 logger = logging.getLogger(__name__)
@@ -89,12 +90,16 @@ class GoogleMeetUIMethods:
             # This means google is blocking us for whatever reason, but we can retry
             element_text = cannot_join_element.text
             logger.info(f"Google is blocking us for whatever reason, but we can retry. Element text: '{element_text}'. Raising UiGoogleBlockingUsException")
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_DETECTED_BLOCKED, message=element_text)
             raise UiGoogleBlockingUsException("You can't join this video call", step)
 
     def look_for_login_required_element(self, step):
         login_required_element = self.find_element_by_selector(By.XPATH, '//h1[contains(., "Sign in")]/parent::*[.//*[contains(text(), "your Google Account")]]')
         if login_required_element:
             logger.info("Login required. Raising UiLoginRequiredException")
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_DETECTED_LOGIN_REQUIRED)
             raise UiLoginRequiredException("Login required", step)
 
     def look_for_denied_your_request_element(self, step):
@@ -109,12 +114,18 @@ class GoogleMeetUIMethods:
 
         if "Someone in the call denied your request to join" in element_text:
             logger.info("Someone in the call actively denied our request to join. Raising UiRequestToJoinDeniedException")
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_DETECTED_DENIED, message="Someone in the call denied your request to join")
             raise UiRequestToJoinDeniedException("Someone in the call denied your request to join", step)
         elif "No one responded to your request to join the call" in element_text:
             logger.info("No one responded to our request to join (timeout). Raising UiRequestToJoinDeniedException")
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_DETECTED_NO_RESPONSE, message="No one responded to your request to join the call")
             raise UiRequestToJoinDeniedException("No one responded to your request to join the call", step)
         else:  # "You left the meeting"
             logger.info("Saw 'You left the meeting' element. Happens if someone actively denied our request to join. Raising UiRequestToJoinDeniedException")
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_DETECTED_DENIED, message="You left the meeting")
             raise UiRequestToJoinDeniedException("You left the meeting", step)
 
     def look_for_asking_to_be_let_in_element_after_waiting_period_expired(self, step):
@@ -218,14 +229,25 @@ class GoogleMeetUIMethods:
         num_attempts_to_look_for_captions_button = 600
         logger.info("Waiting for captions button...")
         waiting_room_timeout_started_at = time.time()
+        logged_asking_to_be_let_in = False
         for attempt_to_look_for_captions_button_index in range(num_attempts_to_look_for_captions_button):
+            # Check for "Asking to be let in" on first few attempts and log once
+            if not logged_asking_to_be_let_in and attempt_to_look_for_captions_button_index < 10:
+                asking_element = self.find_element_by_selector(By.XPATH, '//*[contains(text(), "Asking to be let in")]')
+                if asking_element and self.bot_object_id:
+                    log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_ASKING_TO_BE_LET_IN)
+                    logged_asking_to_be_let_in = True
             try:
                 captions_button = WebDriverWait(self.driver, 1).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'button[aria-label="Turn on captions"]')))
                 logger.info("Captions button found")
+                if self.bot_object_id:
+                    log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_ADMITTED_TO_MEETING)
                 self.click_element(captions_button, "click_captions_button")
                 logger.info("Waiting for captions to be enabled...")
                 WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'button[aria-label="Turn off captions"]')))
                 logger.info("Confirmed captions were enabled")
+                if self.bot_object_id:
+                    log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_CAPTIONS_ENABLED)
                 return
             except UiCouldNotClickElementException as e:
                 self.click_this_meeting_is_being_recorded_join_now_button("click_captions_button")
@@ -264,6 +286,8 @@ class GoogleMeetUIMethods:
         meeting_not_found_element = self.find_element_by_selector(By.XPATH, '//*[contains(text(), "Check your meeting code") or contains(text(), "Invalid video call name") or contains(text(), "Your meeting code has expired")]')
         if meeting_not_found_element:
             logger.info("Meeting not found. Raising UiMeetingNotFoundException")
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_DETECTED_MEETING_NOT_FOUND, message=meeting_not_found_element.text[:200] if meeting_not_found_element.text else "")
             raise UiMeetingNotFoundException("Meeting not found", "check_if_meeting_is_found")
 
     def wait_for_host_if_needed(self):
@@ -272,6 +296,8 @@ class GoogleMeetUIMethods:
             # Wait for up to n seconds for the host to join
             wait_time_seconds = self.automatic_leave_configuration.wait_for_host_to_start_meeting_timeout_seconds
             logger.info(f"We must wait for the host to join before we can join the meeting. Waiting for {wait_time_seconds} seconds...")
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_WAITING_FOR_HOST, message=f"Waiting up to {wait_time_seconds}s for host")
             try:
                 WebDriverWait(self.driver, wait_time_seconds).until(EC.invisibility_of_element_located((By.XPATH, '//*[contains(text(), "Waiting for the host to join")]')))
             except TimeoutException:
@@ -549,11 +575,17 @@ class GoogleMeetUIMethods:
     # returns nothing if succeeded, raises an exception if failed
     def attempt_to_join_meeting(self):
         if self.google_meet_bot_login_is_available and self.google_meet_bot_login_should_be_used:
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_LOGIN_STARTED)
             self.login_to_google_meet_account()
+            if self.bot_object_id:
+                log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_LOGIN_COMPLETED)
 
         layout_to_select = self.get_layout_to_select()
 
         self.driver.get(self.meeting_url)
+        if self.bot_object_id:
+            log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_NAVIGATED_TO_URL, message=self.meeting_url[:200])
 
         self.driver.execute_cdp_cmd(
             "Browser.grantPermissions",
@@ -569,6 +601,8 @@ class GoogleMeetUIMethods:
         )
 
         self.check_if_meeting_is_found()
+        if self.bot_object_id:
+            log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_MEETING_PAGE_LOADED)
 
         self.fill_out_name_input()
 
@@ -580,14 +614,20 @@ class GoogleMeetUIMethods:
             condition=EC.presence_of_element_located((By.XPATH, self.join_now_button_selector())),
             wait_time_seconds=60,
         )
+        if self.bot_object_id:
+            log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_FOUND_JOIN_BUTTON)
         logger.info("Clicking the join button...")
         self.click_element(join_button, "join_button")
+        if self.bot_object_id:
+            log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_CLICKED_JOIN_BUTTON)
 
         self.click_captions_button()
 
         self.wait_for_host_if_needed()
 
         self.set_layout(layout_to_select)
+        if self.bot_object_id:
+            log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_LAYOUT_SET, message=layout_to_select)
 
         if self.disable_incoming_video:
             self.disable_incoming_video_in_ui()
