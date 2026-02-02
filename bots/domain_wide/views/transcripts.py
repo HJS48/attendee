@@ -2,23 +2,11 @@
 Transcript viewer for meeting participants.
 """
 import logging
-import re
 
 from django.shortcuts import render
 from django.views import View
 
 logger = logging.getLogger(__name__)
-
-
-def get_public_video_url(recording_url: str) -> str:
-    """Transform private R2 URL to public URL."""
-    if not recording_url:
-        return ''
-    # Extract path from signed R2 URL
-    match = re.search(r'r2\.cloudflarestorage\.com/[^/]+/(.+?)(?:\?|$)', recording_url)
-    if match:
-        return f"https://pub-b4590a75005946ca8c543dc5efb61b28.r2.dev/{match.group(1)}"
-    return recording_url
 
 
 class TranscriptView(View):
@@ -31,7 +19,7 @@ class TranscriptView(View):
 
     def get(self, request, meeting_id):
         from ..utils import verify_transcript_token, is_valid_uuid
-        from ..supabase_client import get_meeting, get_meeting_insights
+        from ..supabase_client import get_meeting, get_meeting_insights, get_attendee_emails_for_meeting
 
         # Validate meeting ID format
         if not is_valid_uuid(meeting_id):
@@ -68,8 +56,21 @@ class TranscriptView(View):
                 'error': 'Meeting not found'
             }, status=404)
 
-        # Authorization: user has valid token for this meeting, allow access
-        # (Token already verified above with correct meetingId and email)
+        # Authorization: check if user is participant or organizer
+        attendees = get_attendee_emails_for_meeting(meeting.get('meeting_url', ''))
+        attendee_emails = [
+            a.get('email', '').lower() for a in attendees
+            if isinstance(a, dict) and a.get('email')
+        ]
+
+        organizer_email = (meeting.get('organizer_email') or '').lower()
+        is_participant = user_email in attendee_emails
+        is_organizer = user_email == organizer_email
+
+        if not is_participant and not is_organizer:
+            return render(request, 'domain_wide/error.html', {
+                'error': 'Access denied - you must be a meeting participant'
+            }, status=403)
 
         # Fetch insights
         insights = get_meeting_insights(meeting_id)
@@ -84,20 +85,19 @@ class TranscriptView(View):
 
         # Format timestamps for each transcript segment
         for seg in transcript:
-            start_ms = seg.get('timestamp_ms') or seg.get('start_ms', 0)
+            start_ms = seg.get('start_ms', 0)
             total_seconds = start_ms // 1000
             minutes = total_seconds // 60
             seconds = total_seconds % 60
             seg['formatted_time'] = f"[{minutes:02d}:{seconds:02d}]"
 
         # Get unique speakers and assign colors
-        speakers = list(set(seg.get('speaker') or seg.get('speaker_name', 'Unknown') for seg in transcript))
+        speakers = list(set(seg.get('speaker_name', 'Unknown') for seg in transcript))
         speaker_colors = {speaker: idx % 8 for idx, speaker in enumerate(speakers)}
 
-        # Add speaker color and name to each segment for template
+        # Add speaker color to each segment for template
         for seg in transcript:
-            speaker = seg.get('speaker') or seg.get('speaker_name', 'Unknown')
-            seg['speaker_name'] = speaker
+            speaker = seg.get('speaker_name', 'Unknown')
             seg['speaker_color'] = speaker_colors.get(speaker, 0)
 
         # Format duration
@@ -109,8 +109,8 @@ class TranscriptView(View):
         else:
             duration_display = "Unknown duration"
 
-        # Format participant names (use email as fallback)
-        participant_names = [p.get('name') or p.get('email', 'Unknown') for p in participants[:5]]
+        # Format participant names
+        participant_names = [p.get('name', 'Unknown') for p in participants[:5]]
         if len(participants) > 5:
             participant_names.append(f"+{len(participants) - 5} more")
 
@@ -121,7 +121,7 @@ class TranscriptView(View):
             'started_at': meeting.get('started_at'),
             'duration': duration_display,
             'participant_names': ', '.join(participant_names),
-            'recording_url': get_public_video_url(meeting.get('recording_url', '')),
+            'recording_url': meeting.get('recording_url', ''),
             'summary': summary,
             'action_items': action_items,
             'transcript': transcript,

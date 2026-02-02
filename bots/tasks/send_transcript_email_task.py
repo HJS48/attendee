@@ -16,7 +16,7 @@ from celery import shared_task
 from django.conf import settings
 
 from bots.domain_wide.supabase_client import get_meeting
-from bots.domain_wide.utils import create_transcript_token
+from bots.transcript_views import create_transcript_token
 
 logger = logging.getLogger(__name__)
 
