@@ -42,7 +42,11 @@ if not os.environ.get("DISABLE_ADMIN"):
     urlpatterns.append(path("admin/", admin.site.urls))
 
 # Internal API endpoints (service-to-service, X-Api-Key auth) - must come before bots_api_urls catch-all
-from bots.transcript_urls import internal_api_urlpatterns
+from bots.transcript_api_views import notify_meeting
+from bots.domain_wide.views import TranscriptView
+internal_api_urlpatterns = [
+    path('internal/notify-meeting/', notify_meeting, name='notify_meeting'),
+]
 
 urlpatterns += [
     path("accounts/", include("allauth.urls")),
@@ -60,7 +64,7 @@ urlpatterns += [
     # Domain-wide health dashboard (no auth required)
     path("dashboard/", include("bots.domain_wide.urls", namespace="domain_wide")),
     # Transcript viewer (token-based auth, no login required)
-    path("transcripts/", include("bots.transcript_urls", namespace="transcripts")),
+    path("transcripts/<str:meeting_id>/", TranscriptView.as_view(), name="transcript-view"),
 ]
 
 if settings.DEBUG:
