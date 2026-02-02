@@ -156,36 +156,43 @@ def handle_event_deletion(sender, instance, **kwargs):
 
 
 # =============================================================================
-# Phase 1: Create Meeting Metadata on Bot End
+# Phase 1: Create Meeting Metadata on Bot End or Failure
 # =============================================================================
 
 @receiver(post_save, sender=Bot)
 def create_meeting_on_bot_end(sender, instance, **kwargs):
     """
-    Phase 1: Create meeting metadata in Supabase when bot reaches ENDED state.
+    Phase 1: Create/update meeting in Supabase when bot reaches terminal state.
 
-    This creates the meeting row with metadata (title, URL, timestamps) but
-    sets transcript_status='pending'. The transcript will be synced separately
-    when Recording.transcription_state → COMPLETE (see Phase 2 below).
+    - ENDED: Creates meeting with transcript_status='pending', transcript synced later
+    - FATAL_ERROR: Creates/updates meeting with transcript_status='failed'
     """
-
-    # Only trigger when bot has ended (not for other state changes)
-    if instance.state != BotStates.ENDED:
-        return
 
     # Skip if no meeting URL (nothing to sync)
     if not instance.meeting_url:
         return
 
-    # Queue async task to avoid blocking (routes to K8s or Celery)
-    try:
-        from .tasks import enqueue_create_meeting_metadata_task
-        enqueue_create_meeting_metadata_task(str(instance.object_id))
-        logger.debug(f"Queued meeting metadata creation for bot {instance.object_id}")
-    except ImportError:
-        logger.warning("enqueue_create_meeting_metadata_task not found, skipping Phase 1")
-    except Exception as e:
-        logger.exception(f"Failed to queue meeting metadata creation for bot {instance.object_id}: {e}")
+    # Bot ended successfully - create meeting with pending transcript
+    if instance.state == BotStates.ENDED:
+        try:
+            from .tasks import enqueue_create_meeting_metadata_task
+            enqueue_create_meeting_metadata_task(str(instance.object_id))
+            logger.debug(f"Queued meeting metadata creation for bot {instance.object_id}")
+        except ImportError:
+            logger.warning("enqueue_create_meeting_metadata_task not found, skipping Phase 1")
+        except Exception as e:
+            logger.exception(f"Failed to queue meeting metadata creation for bot {instance.object_id}: {e}")
+
+    # Bot failed - mark meeting as failed
+    elif instance.state == BotStates.FATAL_ERROR:
+        try:
+            from .tasks import enqueue_mark_transcript_failed_task
+            enqueue_mark_transcript_failed_task(str(instance.object_id))
+            logger.debug(f"Queued meeting failure marking for bot {instance.object_id}")
+        except ImportError:
+            logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
+        except Exception as e:
+            logger.exception(f"Failed to queue meeting failure marking for bot {instance.object_id}: {e}")
 
 
 # =============================================================================

@@ -388,8 +388,11 @@ def mark_transcript_failed(bot_id: str):
 def _mark_transcript_failed_impl(bot_id: str):
     """
     Implementation of mark_transcript_failed shared by both Celery and sync versions.
+
+    Creates/updates meeting with full metadata and transcript_status='failed'.
+    Used when bot reaches FATAL_ERROR or transcription fails.
     """
-    from bots.models import Bot
+    from bots.models import Bot, Recording, RecordingStates
     from .supabase_client import upsert_meeting
     from bots.domain_wide.models import PipelineActivity
 
@@ -401,28 +404,54 @@ def _mark_transcript_failed_impl(bot_id: str):
 
     event = bot.calendar_event
 
-    # Update transcript status to failed
+    # Build full meeting metadata (same as Phase 1, but with failed status)
     meeting_data = {
         'attendee_bot_id': str(bot.object_id),
+        'meeting_url': bot.meeting_url,
+        'title': event.name if event and event.name else '',
         'transcript_status': 'failed',
     }
 
+    # Get recording if available (for timestamps)
+    recording = Recording.objects.filter(
+        bot=bot,
+        state__in=[RecordingStates.COMPLETE, RecordingStates.IN_PROGRESS, RecordingStates.FAILED]
+    ).order_by('-created_at').first()
+
+    if recording:
+        meeting_data['started_at'] = recording.started_at.isoformat() if recording.started_at else None
+        meeting_data['ended_at'] = recording.completed_at.isoformat() if recording.completed_at else None
+
+        if recording.started_at and recording.completed_at:
+            duration = (recording.completed_at - recording.started_at).total_seconds()
+            meeting_data['duration_seconds'] = int(duration)
+
+    # Add event details if available
+    if event:
+        meeting_data['organizer_email'] = getattr(event, 'organizer_email', None)
+        attendees = event.attendees or []
+        if isinstance(attendees, list):
+            meeting_data['participants'] = [
+                {'email': a.get('email')} for a in attendees
+                if isinstance(a, dict) and a.get('email')
+            ]
+
     result = upsert_meeting(meeting_data)
-    meeting_title = event.name if event and event.name else ''
+    meeting_title = meeting_data.get('title', '')
 
     if result:
-        logger.info(f"Marked transcript as failed in Supabase for bot {bot_id}")
+        logger.info(f"Marked meeting as failed in Supabase for bot {bot_id}")
         PipelineActivity.log(
-            event_type=PipelineActivity.EventType.TRANSCRIPT_SYNCED,
+            event_type=PipelineActivity.EventType.MEETING_CREATED,
             status=PipelineActivity.Status.FAILED,
             bot_id=bot_id,
             meeting_id=result.get('id', ''),
             meeting_title=meeting_title,
-            error='transcription failed',
+            error='bot failed',
         )
         return {'status': 'success', 'meeting_id': result.get('id', ''), 'transcript_status': 'failed'}
     else:
-        logger.warning(f"Failed to mark transcript as failed in Supabase for bot {bot_id}")
+        logger.warning(f"Failed to mark meeting as failed in Supabase for bot {bot_id}")
         return {'status': 'error', 'reason': 'upsert failed'}
 
 
