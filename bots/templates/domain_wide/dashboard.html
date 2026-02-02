@@ -2981,7 +2981,7 @@
 
         async function fetchBotPods() {
             try {
-                const response = await fetch('/dashboard/api/kubernetes/pods');
+                const response = await fetch('/dashboard/api/k8s/pods/');
                 if (!response.ok) return [];
                 const data = await response.json();
                 // Include all bot pods (Running, Error, Completed) for visibility
