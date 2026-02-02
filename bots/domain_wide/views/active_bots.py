@@ -164,10 +164,10 @@ class ActiveBotPodsAPI(View):
 
             v1 = _init_kubernetes_client()
 
-            # Query pods with app=bot-pod label
+            # Query pods with app=bot-proc label (matches bot_pod_creator.py)
             pods = v1.list_namespaced_pod(
                 namespace=namespace,
-                label_selector='app=bot-pod'
+                label_selector='app=bot-proc'
             )
 
             # Get metrics from metrics-server
