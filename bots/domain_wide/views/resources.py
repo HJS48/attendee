@@ -225,3 +225,49 @@ class BotResourcesAPI(View):
             'events': events,
             'timestamp': timezone.now().isoformat(),
         })
+
+
+class BotActivityLogAPI(View):
+    """Activity timeline for a bot - shows UI milestones for debugging failed joins."""
+
+    def get(self, request):
+        from bots.models import BotActivityLog, BotStates
+
+        bot_id = request.GET.get('bot_id')
+        if not bot_id:
+            return JsonResponse({'error': 'bot_id parameter required'}, status=400)
+
+        try:
+            if bot_id.startswith('bot_') or bot_id.startswith('bot-'):
+                bot = Bot.objects.get(object_id__iexact=bot_id)
+            else:
+                bot = Bot.objects.get(id=int(bot_id))
+        except (Bot.DoesNotExist, ValueError):
+            return JsonResponse({'error': 'Bot not found'}, status=404)
+
+        # Get activity logs
+        activities = BotActivityLog.objects.filter(bot=bot).order_by('created_at')
+
+        # Determine if we should show the timeline (only for failed bots)
+        is_failed = bot.state == BotStates.FATAL_ERROR
+
+        return JsonResponse({
+            'bot_id': bot.object_id,
+            'state': bot.get_state_display(),
+            'is_failed': is_failed,
+            'show_timeline': is_failed or activities.exists(),  # Show if failed OR has any logs
+            'activities': [
+                {
+                    'timestamp': a.created_at.isoformat(),
+                    'time_display': a.created_at.strftime('%H:%M:%S'),
+                    'type': a.get_activity_type_display(),
+                    'type_code': a.activity_type,
+                    'message': a.message,
+                    'elapsed_ms': a.elapsed_ms,
+                    'elapsed_display': f'+{a.elapsed_ms}ms' if a.elapsed_ms else None,
+                    'is_error': a.activity_type >= 10 and a.activity_type < 20,
+                }
+                for a in activities
+            ],
+            'timestamp': timezone.now().isoformat(),
+        })

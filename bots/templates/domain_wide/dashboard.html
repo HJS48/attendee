@@ -579,6 +579,79 @@
         .bot-info-item.warning .value { color: #f59e0b; }
         .bot-info-item.error .value { color: #ef4444; }
 
+        /* Activity Timeline */
+        .activity-timeline {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 16px;
+        }
+        .activity-timeline h4 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .activity-timeline h4 .badge {
+            font-size: 10px;
+            padding: 2px 6px;
+        }
+        .timeline-list {
+            border-left: 2px solid #e5e7eb;
+            margin-left: 8px;
+            padding-left: 16px;
+        }
+        .timeline-item {
+            position: relative;
+            padding: 8px 0;
+            font-size: 13px;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -21px;
+            top: 12px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            border: 2px solid white;
+            box-shadow: 0 0 0 2px #e5e7eb;
+        }
+        .timeline-item.error::before {
+            background: #ef4444;
+        }
+        .timeline-item.waiting::before {
+            background: #f59e0b;
+        }
+        .timeline-item .time {
+            color: #666;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .timeline-item .type {
+            color: #333;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+        .timeline-item .elapsed {
+            color: #888;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+        .timeline-item .message {
+            color: #666;
+            font-size: 12px;
+            margin-top: 2px;
+            padding-left: 70px;
+        }
+        .timeline-empty {
+            color: #888;
+            font-style: italic;
+            font-size: 13px;
+        }
+
         /* System Health Bar */
         .system-health-bar {
             background: white;
@@ -1058,6 +1131,17 @@
                     <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">CPU Usage Over Time</h4>
                     <div class="chart-container">
                         <canvas id="cpu-chart"></canvas>
+                    </div>
+
+                    <!-- Activity Timeline (for failed bots) -->
+                    <div class="activity-timeline" id="activity-timeline-section" style="display: none;">
+                        <h4>
+                            Join Timeline
+                            <span class="badge badge-error" id="timeline-status-badge">Failed</span>
+                        </h4>
+                        <div class="timeline-list" id="activity-timeline-list">
+                            <div class="timeline-empty">No activity logs recorded</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2169,6 +2253,48 @@
 
             } catch (error) {
                 console.error('Failed to load bot resources:', error);
+            }
+
+            // Load activity timeline
+            try {
+                const activityData = await fetch(`/dashboard/api/resources/activity/?bot_id=${botId}`).then(r => r.json());
+                const timelineSection = document.getElementById('activity-timeline-section');
+                const timelineList = document.getElementById('activity-timeline-list');
+                const statusBadge = document.getElementById('timeline-status-badge');
+
+                if (activityData.show_timeline && activityData.activities && activityData.activities.length > 0) {
+                    timelineSection.style.display = 'block';
+
+                    // Update badge based on state
+                    if (activityData.is_failed) {
+                        statusBadge.className = 'badge badge-error';
+                        statusBadge.textContent = 'Failed';
+                    } else {
+                        statusBadge.className = 'badge badge-success';
+                        statusBadge.textContent = activityData.state;
+                    }
+
+                    // Render timeline items
+                    timelineList.innerHTML = activityData.activities.map(a => {
+                        let itemClass = 'timeline-item';
+                        if (a.is_error) itemClass += ' error';
+                        else if (a.type_code === 5 || a.type_code === 6) itemClass += ' waiting';
+
+                        return `
+                            <div class="${itemClass}">
+                                <span class="time">${a.time_display}</span>
+                                <span class="type">${a.type}</span>
+                                ${a.elapsed_display ? `<span class="elapsed">${a.elapsed_display}</span>` : ''}
+                                ${a.message ? `<div class="message">${a.message}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    timelineSection.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to load activity timeline:', error);
+                document.getElementById('activity-timeline-section').style.display = 'none';
             }
         }
 

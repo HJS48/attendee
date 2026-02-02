@@ -37,6 +37,7 @@ urlpatterns = [
     # Resource Monitoring APIs
     path('api/resources/summary/', views.ResourceSummaryAPI.as_view(), name='api-resource-summary'),
     path('api/resources/bot/', views.BotResourcesAPI.as_view(), name='api-bot-resources'),
+    path('api/resources/activity/', views.BotActivityLogAPI.as_view(), name='api-bot-activity'),
 
     # Active Bots/Pods APIs
     path('api/pods/active/', views.ActiveBotPodsAPI.as_view(), name='api-pods-active'),

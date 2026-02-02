@@ -50,6 +50,7 @@ from .system_health import (
 from .resources import (
     ResourceSummaryAPI,
     BotResourcesAPI,
+    BotActivityLogAPI,
 )
 
 from .active_bots import (
@@ -106,6 +107,7 @@ __all__ = [
     # Resources
     'ResourceSummaryAPI',
     'BotResourcesAPI',
+    'BotActivityLogAPI',
     # Active Bots/Pods
     'ActiveBotPodsAPI',
     'ActiveBotsAPI',
