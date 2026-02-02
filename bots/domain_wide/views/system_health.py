@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import connection
-from django.db.models import Count, Max, Subquery
+from django.db.models import Count, Exists, Max, OuterRef, Subquery
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views import View
@@ -161,11 +161,17 @@ class MeetingSyncStatusAPI(View):
             target_date = timezone.now().date()
 
         # Get all ended bots for the date (including fatal errors)
+        # Only count bots that:
+        # 1. Have join_at in the past (actually scheduled to run)
+        # 2. Have at least one recording (actually ran)
         ended_bots = Bot.objects.filter(
             state__in=[BotStates.ENDED, BotStates.FATAL_ERROR, BotStates.DATA_DELETED],
             updated_at__date=target_date,
-            meeting_url__isnull=False
-        ).exclude(meeting_url='')
+            meeting_url__isnull=False,
+            join_at__lte=timezone.now()  # Only past meetings
+        ).exclude(meeting_url='').annotate(
+            has_recording=Exists(Recording.objects.filter(bot=OuterRef('pk')))
+        ).filter(has_recording=True)  # Only bots that actually ran
 
         total_ended = ended_bots.count()
 

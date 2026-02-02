@@ -146,7 +146,7 @@ def _create_meeting_metadata_impl(bot_id: str):
     """
     Implementation of create_meeting_metadata shared by both Celery and sync versions.
     """
-    from bots.models import Bot, Recording, RecordingStates
+    from bots.models import Bot, Recording, RecordingStates, RecordingTranscriptionStates
     from .supabase_client import upsert_meeting
     from bots.domain_wide.models import PipelineActivity
 
@@ -157,6 +157,16 @@ def _create_meeting_metadata_impl(bot_id: str):
         return {'status': 'error', 'reason': 'bot not found'}
 
     event = bot.calendar_event
+
+    # Check if transcription is already complete - do full sync instead
+    # This handles the race condition where transcription completes before bot reaches ENDED
+    completed_recording = Recording.objects.filter(
+        bot=bot,
+        transcription_state=RecordingTranscriptionStates.COMPLETE
+    ).first()
+    if completed_recording:
+        logger.info(f"Transcription already complete for {bot_id}, running full sync instead of Phase 1")
+        return _sync_transcript_impl(bot_id)
 
     # Check if meeting already exists with transcript complete (race condition guard)
     # Phase 2 may have already run if transcription completed quickly
