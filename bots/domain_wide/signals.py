@@ -4,6 +4,7 @@ Hooks into CalendarEvent signals without modifying upstream code.
 """
 import logging
 from datetime import timedelta
+from django.db import transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -174,25 +175,31 @@ def create_meeting_on_bot_end(sender, instance, **kwargs):
 
     # Bot ended successfully - create meeting with pending transcript
     if instance.state == BotStates.ENDED:
-        try:
-            from .tasks import enqueue_create_meeting_metadata_task
-            enqueue_create_meeting_metadata_task(str(instance.object_id))
-            logger.debug(f"Queued meeting metadata creation for bot {instance.object_id}")
-        except ImportError:
-            logger.warning("enqueue_create_meeting_metadata_task not found, skipping Phase 1")
-        except Exception as e:
-            logger.exception(f"Failed to queue meeting metadata creation for bot {instance.object_id}: {e}")
+        bot_object_id = str(instance.object_id)
+        def _enqueue_phase1():
+            try:
+                from .tasks import enqueue_create_meeting_metadata_task
+                enqueue_create_meeting_metadata_task(bot_object_id)
+                logger.debug(f"Queued meeting metadata creation for bot {bot_object_id}")
+            except ImportError:
+                logger.warning("enqueue_create_meeting_metadata_task not found, skipping Phase 1")
+            except Exception as e:
+                logger.exception(f"Failed to queue meeting metadata creation for bot {bot_object_id}: {e}")
+        transaction.on_commit(_enqueue_phase1)
 
     # Bot failed - mark meeting as failed
     elif instance.state == BotStates.FATAL_ERROR:
-        try:
-            from .tasks import enqueue_mark_transcript_failed_task
-            enqueue_mark_transcript_failed_task(str(instance.object_id))
-            logger.debug(f"Queued meeting failure marking for bot {instance.object_id}")
-        except ImportError:
-            logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
-        except Exception as e:
-            logger.exception(f"Failed to queue meeting failure marking for bot {instance.object_id}: {e}")
+        bot_object_id = str(instance.object_id)
+        def _enqueue_failed():
+            try:
+                from .tasks import enqueue_mark_transcript_failed_task
+                enqueue_mark_transcript_failed_task(bot_object_id)
+                logger.debug(f"Queued meeting failure marking for bot {bot_object_id}")
+            except ImportError:
+                logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
+            except Exception as e:
+                logger.exception(f"Failed to queue meeting failure marking for bot {bot_object_id}: {e}")
+        transaction.on_commit(_enqueue_failed)
 
 
 # =============================================================================
@@ -239,29 +246,30 @@ def sync_transcript_on_transcription_complete(sender, instance, **kwargs):
     if not bot or not bot.meeting_url:
         return
 
-    # Only trigger for bots that have ended (to avoid premature syncs)
-    if bot.state != BotStates.ENDED:
-        logger.debug(f"Skipping transcript sync for recording {instance.pk} - bot {bot.object_id} not ended yet")
-        return
+    bot_object_id = str(bot.object_id)
 
     # Transcription completed → sync transcript (Phase 2)
     if new_state == RecordingTranscriptionStates.COMPLETE:
-        try:
-            from .tasks import enqueue_sync_transcript_task
-            enqueue_sync_transcript_task(str(bot.object_id))
-            logger.info(f"Queued transcript sync for bot {bot.object_id} (transcription complete)")
-        except ImportError:
-            logger.warning("enqueue_sync_transcript_task not found, skipping Phase 2")
-        except Exception as e:
-            logger.exception(f"Failed to queue transcript sync for bot {bot.object_id}: {e}")
+        def _enqueue_phase2():
+            try:
+                from .tasks import enqueue_sync_transcript_task
+                enqueue_sync_transcript_task(bot_object_id)
+                logger.info(f"Queued transcript sync for bot {bot_object_id} (transcription complete)")
+            except ImportError:
+                logger.warning("enqueue_sync_transcript_task not found, skipping Phase 2")
+            except Exception as e:
+                logger.exception(f"Failed to queue transcript sync for bot {bot_object_id}: {e}")
+        transaction.on_commit(_enqueue_phase2)
 
     # Transcription failed → mark as failed
     elif new_state == RecordingTranscriptionStates.FAILED:
-        try:
-            from .tasks import enqueue_mark_transcript_failed_task
-            enqueue_mark_transcript_failed_task(str(bot.object_id))
-            logger.info(f"Queued transcript failed marking for bot {bot.object_id}")
-        except ImportError:
-            logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
-        except Exception as e:
-            logger.exception(f"Failed to queue transcript failed marking for bot {bot.object_id}: {e}")
+        def _enqueue_trans_failed():
+            try:
+                from .tasks import enqueue_mark_transcript_failed_task
+                enqueue_mark_transcript_failed_task(bot_object_id)
+                logger.info(f"Queued transcript failed marking for bot {bot_object_id}")
+            except ImportError:
+                logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
+            except Exception as e:
+                logger.exception(f"Failed to queue transcript failed marking for bot {bot_object_id}: {e}")
+        transaction.on_commit(_enqueue_trans_failed)
