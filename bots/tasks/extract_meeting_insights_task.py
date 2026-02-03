@@ -176,7 +176,7 @@ def call_claude(transcript_text: str, title: str, participants: list) -> dict:
 
     response = client.messages.create(
         model=get_anthropic_model(),
-        max_tokens=4096,
+        max_tokens=16384,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}]
     )
