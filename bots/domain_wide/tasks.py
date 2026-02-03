@@ -219,8 +219,8 @@ def enqueue_sync_transcript_task(bot_id: str):
         sync_transcript.delay(bot_id)
 
 
-@shared_task
-def sync_transcript(bot_id: str):
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def sync_transcript(self, bot_id: str):
     """
     Phase 2: Sync transcript to Supabase and trigger insight extraction.
 
@@ -230,7 +230,11 @@ def sync_transcript(bot_id: str):
     - transcript_status = 'complete'
     - THEN triggers insight extraction → email
     """
-    return _sync_transcript_impl(bot_id)
+    try:
+        return _sync_transcript_impl(bot_id)
+    except Exception as exc:
+        logger.exception(f"sync_transcript failed for bot {bot_id}: {exc}")
+        raise self.retry(exc=exc)
 
 
 def _sync_transcript_impl(bot_id: str):

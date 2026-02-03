@@ -18,7 +18,7 @@ from bots.tasks.sync_zoom_oauth_connection_task import enqueue_sync_zoom_oauth_c
 
 # Check if domain_wide module is installed
 try:
-    from bots.domain_wide.tasks import renew_expiring_watch_channels, sync_pending_meetings_to_supabase
+    from bots.domain_wide.tasks import renew_expiring_watch_channels
     DOMAIN_WIDE_ENABLED = True
 except ImportError:
     DOMAIN_WIDE_ENABLED = False
@@ -62,8 +62,6 @@ class Command(BaseCommand):
                 self._run_autopay_tasks()
                 if DOMAIN_WIDE_ENABLED:
                     self._run_watch_channel_renewals()
-                    # DISABLED: _run_supabase_sync causes queue flooding - using signal-based approach instead
-                    # self._run_supabase_sync()
             except Exception:
                 log.exception("Scheduler cycle failed")
             finally:
@@ -280,14 +278,3 @@ class Command(BaseCommand):
         else:
             log.debug("No watch channels need renewal")
 
-    def _run_supabase_sync(self):
-        """
-        Sync completed meetings to Supabase.
-        Runs every scheduler cycle to catch up on any meetings that weren't synced.
-        """
-        from bots.task_executor import is_kubernetes_mode, task_executor
-
-        if is_kubernetes_mode():
-            task_executor.submit(sync_pending_meetings_to_supabase)
-        else:
-            sync_pending_meetings_to_supabase.delay()
