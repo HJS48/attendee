@@ -8,6 +8,7 @@ import html
 import logging
 import os
 import smtplib
+import time
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -306,6 +307,7 @@ def send_transcript_email_sync(meeting_id: str, summary: str, action_items: list
                 server.send_message(msg)
                 sent_count += 1
                 logger.info(f"Sent transcript email to {recipient}")
+                time.sleep(1)  # stay under SMTP rate limit (2 req/s)
 
                 # Log success
                 PipelineActivity.log(
