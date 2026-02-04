@@ -38,7 +38,7 @@ def auto_create_bot_for_event(sender, instance, created, **kwargs):
     """Auto-create a bot when a new CalendarEvent with meeting_url is created."""
 
     # Only for new events with meeting URLs
-    if not created or not instance.meeting_url:
+    if not created or not instance.meeting_url or instance.is_deleted:
         return
 
     # Check if auto-bot is enabled (via settings)

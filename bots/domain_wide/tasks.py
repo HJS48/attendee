@@ -12,7 +12,7 @@ def sync_all_pilot_calendars():
     """
     Sync all calendars for pilot users.
 
-    Looks up calendars by deduplication_key pattern: "{email}-google-sa"
+    Looks up calendars by deduplication_key pattern: "{email}-google-domain"
     Triggers async sync for each found calendar.
     """
     pilot_users = get_pilot_users()
@@ -29,7 +29,7 @@ def sync_all_pilot_calendars():
     for email in pilot_users:
         calendar = Calendar.objects.filter(
             project=project,
-            deduplication_key=f"{email}-google-sa"
+            deduplication_key=f"{email}-google-domain"
         ).first()
 
         if calendar:
