@@ -23,3 +23,55 @@ spec:
                 - secretRef:
                     name: app-secrets
           restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ensure-bots-exist
+  namespace: attendee
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: attendee-bot-creator
+          imagePullSecrets:
+            - name: ghcr-secret
+          containers:
+            - name: ensure-bots
+              image: ghcr.io/hjs48/attendee:latest
+              command: ["python"]
+              args: ["manage.py", "ensure_bots_exist"]
+              envFrom:
+                - configMapRef:
+                    name: env
+                - secretRef:
+                    name: app-secrets
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retry-stuck-insights
+  namespace: attendee
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: attendee-bot-creator
+          imagePullSecrets:
+            - name: ghcr-secret
+          containers:
+            - name: retry-insights
+              image: ghcr.io/hjs48/attendee:latest
+              command: ["python"]
+              args: ["manage.py", "retry_stuck_insights"]
+              envFrom:
+                - configMapRef:
+                    name: env
+                - secretRef:
+                    name: app-secrets
+          restartPolicy: OnFailure

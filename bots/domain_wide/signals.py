@@ -157,53 +157,7 @@ def handle_event_deletion(sender, instance, **kwargs):
 
 
 # =============================================================================
-# Phase 1: Create Meeting Metadata on Bot End or Failure
-# =============================================================================
-
-@receiver(post_save, sender=Bot)
-def create_meeting_on_bot_end(sender, instance, **kwargs):
-    """
-    Phase 1: Create/update meeting in Supabase when bot reaches terminal state.
-
-    - ENDED: Creates meeting with transcript_status='pending', transcript synced later
-    - FATAL_ERROR: Creates/updates meeting with transcript_status='failed'
-    """
-
-    # Skip if no meeting URL (nothing to sync)
-    if not instance.meeting_url:
-        return
-
-    # Bot ended successfully - create meeting with pending transcript
-    if instance.state == BotStates.ENDED:
-        bot_object_id = str(instance.object_id)
-        def _enqueue_phase1():
-            try:
-                from .tasks import enqueue_create_meeting_metadata_task
-                enqueue_create_meeting_metadata_task(bot_object_id)
-                logger.debug(f"Queued meeting metadata creation for bot {bot_object_id}")
-            except ImportError:
-                logger.warning("enqueue_create_meeting_metadata_task not found, skipping Phase 1")
-            except Exception as e:
-                logger.exception(f"Failed to queue meeting metadata creation for bot {bot_object_id}: {e}")
-        transaction.on_commit(_enqueue_phase1)
-
-    # Bot failed - mark meeting as failed
-    elif instance.state == BotStates.FATAL_ERROR:
-        bot_object_id = str(instance.object_id)
-        def _enqueue_failed():
-            try:
-                from .tasks import enqueue_mark_transcript_failed_task
-                enqueue_mark_transcript_failed_task(bot_object_id)
-                logger.debug(f"Queued meeting failure marking for bot {bot_object_id}")
-            except ImportError:
-                logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
-            except Exception as e:
-                logger.exception(f"Failed to queue meeting failure marking for bot {bot_object_id}: {e}")
-        transaction.on_commit(_enqueue_failed)
-
-
-# =============================================================================
-# Phase 2: Sync Transcript on Recording Transcription Complete
+# Transcript Complete: fire insights + Supabase sync
 # =============================================================================
 
 @receiver(pre_save, sender=Recording)
@@ -228,48 +182,35 @@ def track_transcription_state_change(sender, instance, **kwargs):
 @receiver(post_save, sender=Recording)
 def sync_transcript_on_transcription_complete(sender, instance, **kwargs):
     """
-    Phase 2: Sync transcript to Supabase when transcription completes.
-
-    Triggers when Recording.transcription_state transitions TO COMPLETE or FAILED.
-    This ensures we only sync transcript after it's fully ready, preventing the
-    race condition where bot ENDED fires before transcription is done.
+    On Recording.transcription_state → COMPLETE, fire both:
+    1. process_meeting_insights (critical path: Claude → Postgres → email)
+    2. sync_meeting_to_supabase (fire-and-forget mirror)
     """
     old_state = getattr(instance, '_old_transcription_state', None)
     new_state = instance.transcription_state
 
-    # Only act on state transitions
     if old_state == new_state:
         return
 
-    # Get the bot for this recording
     bot = instance.bot
     if not bot or not bot.meeting_url:
         return
 
     bot_object_id = str(bot.object_id)
 
-    # Transcription completed → sync transcript (Phase 2)
     if new_state == RecordingTranscriptionStates.COMPLETE:
-        def _enqueue_phase2():
+        def _enqueue_both():
             try:
-                from .tasks import enqueue_sync_transcript_task
-                enqueue_sync_transcript_task(bot_object_id)
-                logger.info(f"Queued transcript sync for bot {bot_object_id} (transcription complete)")
-            except ImportError:
-                logger.warning("enqueue_sync_transcript_task not found, skipping Phase 2")
+                from bots.tasks.process_meeting_insights_task import enqueue_process_meeting_insights_task
+                enqueue_process_meeting_insights_task(bot_object_id)
+                logger.info(f"Queued process_meeting_insights for bot {bot_object_id}")
             except Exception as e:
-                logger.exception(f"Failed to queue transcript sync for bot {bot_object_id}: {e}")
-        transaction.on_commit(_enqueue_phase2)
+                logger.exception(f"Failed to queue process_meeting_insights for bot {bot_object_id}: {e}")
 
-    # Transcription failed → mark as failed
-    elif new_state == RecordingTranscriptionStates.FAILED:
-        def _enqueue_trans_failed():
             try:
-                from .tasks import enqueue_mark_transcript_failed_task
-                enqueue_mark_transcript_failed_task(bot_object_id)
-                logger.info(f"Queued transcript failed marking for bot {bot_object_id}")
-            except ImportError:
-                logger.warning("enqueue_mark_transcript_failed_task not found, skipping failure marking")
+                from .tasks import enqueue_sync_meeting_to_supabase_task
+                enqueue_sync_meeting_to_supabase_task(bot_object_id)
+                logger.info(f"Queued sync_meeting_to_supabase for bot {bot_object_id}")
             except Exception as e:
-                logger.exception(f"Failed to queue transcript failed marking for bot {bot_object_id}: {e}")
-        transaction.on_commit(_enqueue_trans_failed)
+                logger.exception(f"Failed to queue sync_meeting_to_supabase for bot {bot_object_id}: {e}")
+        transaction.on_commit(_enqueue_both)

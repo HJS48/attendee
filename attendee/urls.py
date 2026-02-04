@@ -41,9 +41,6 @@ urlpatterns = [
 if not os.environ.get("DISABLE_ADMIN"):
     urlpatterns.append(path("admin/", admin.site.urls))
 
-# Internal API endpoints (service-to-service, X-Api-Key auth) - must come before bots_api_urls catch-all
-from bots.transcript_urls import internal_api_urlpatterns
-
 urlpatterns += [
     path("accounts/", include("allauth.urls")),
     path("accounts/", include("allauth.socialaccount.urls")),
@@ -54,8 +51,6 @@ urlpatterns += [
     path("api/v1/", include("bots.calendars_api_urls")),
     path("api/v1/", include("bots.zoom_oauth_connections_api_urls")),
     path("api/v1/", include("bots.app_session_api_urls")),
-    # Internal transcript notification endpoint (before catch-all)
-    path("api/v1/", include((internal_api_urlpatterns, "internal_api"))),
     path("api/v1/", include("bots.bots_api_urls")),
     # Domain-wide health dashboard (no auth required)
     path("dashboard/", include("bots.domain_wide.urls", namespace="domain_wide")),

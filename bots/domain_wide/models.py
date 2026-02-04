@@ -135,3 +135,28 @@ class PipelineActivity(models.Model):
             recipient=recipient,
             error=error,
         )
+
+
+class MeetingInsight(models.Model):
+    """
+    Stores Claude-extracted insights (summary + action items) in Postgres.
+    Source of truth for insights — mirrored to Supabase best-effort.
+    """
+    recording = models.OneToOneField(
+        'bots.Recording', on_delete=models.CASCADE, related_name='insight'
+    )
+    bot = models.ForeignKey(
+        'bots.Bot', on_delete=models.CASCADE, related_name='insights'
+    )
+    supabase_meeting_id = models.CharField(
+        max_length=64, blank=True, default='', db_index=True
+    )
+    summary = models.TextField(blank=True, default='')
+    action_items = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = 'domain_wide'
+
+    def __str__(self):
+        return f"Insight for recording {self.recording_id}"
