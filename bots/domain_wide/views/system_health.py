@@ -487,7 +487,6 @@ class PipelineActivityAPI(View):
 
     def get(self, request):
         from ..models import PipelineActivity
-        from ..supabase_client import get_supabase_client
 
         today = timezone.now().date()
 
@@ -499,41 +498,22 @@ class PipelineActivityAPI(View):
         ).exclude(meeting_url='').values_list('object_id', flat=True)
         today_bot_ids = set(str(bid) for bid in today_ended_bots)
 
-        # Get meeting_ids for today's bots from Supabase
-        today_meeting_ids = set()
-        client = get_supabase_client()
-        if client and today_bot_ids:
-            try:
-                result = client.table('meetings').select(
-                    'id, attendee_bot_id'
-                ).in_('attendee_bot_id', list(today_bot_ids)).execute()
-                for m in (result.data or []):
-                    if m.get('id'):
-                        today_meeting_ids.add(m['id'])
-            except Exception as e:
-                logger.warning(f"Failed to fetch today's meeting IDs: {e}")
+        # Get today's activities for today's bots
+        today_activities = PipelineActivity.objects.filter(
+            created_at__date=today,
+            bot_id__in=today_bot_ids,
+        )
 
-        # Get today's activities, filtered to only today's meetings
-        today_activities = PipelineActivity.objects.filter(created_at__date=today)
-        if today_meeting_ids:
-            today_activities_for_today_meetings = today_activities.filter(
-                meeting_id__in=today_meeting_ids
-            )
-        else:
-            today_activities_for_today_meetings = today_activities.filter(
-                bot_id__in=today_bot_ids
-            )
-
-        # Helper to count unique meetings by final outcome
+        # Helper to count unique bots by final outcome
         def count_by_final_outcome(queryset):
-            """Count unique meetings by their final (most recent) status."""
-            latest_per_meeting = queryset.filter(
-                meeting_id__isnull=False
-            ).exclude(meeting_id='').values('meeting_id').annotate(
+            """Count unique bots by their final (most recent) status."""
+            latest_per_bot = queryset.filter(
+                bot_id__isnull=False
+            ).exclude(bot_id='').values('bot_id').annotate(
                 latest_id=Max('id')
             ).values('latest_id')
 
-            final_outcomes = queryset.filter(id__in=Subquery(latest_per_meeting))
+            final_outcomes = queryset.filter(id__in=Subquery(latest_per_bot))
 
             return {
                 'success': final_outcomes.filter(status=PipelineActivity.Status.SUCCESS).count(),
@@ -541,16 +521,16 @@ class PipelineActivityAPI(View):
             }
 
         # Filter by event type
-        insight_extraction = today_activities_for_today_meetings.filter(
+        insight_extraction = today_activities.filter(
             event_type=PipelineActivity.EventType.INSIGHT_EXTRACTION
         )
-        emails = today_activities_for_today_meetings.filter(
+        emails = today_activities.filter(
             event_type=PipelineActivity.EventType.EMAIL_SENT
         )
 
         # Get recent email details
         recent_emails = emails.order_by('-created_at')[:20].values(
-            'recipient', 'meeting_title', 'meeting_id', 'status', 'error', 'created_at'
+            'recipient', 'meeting_title', 'meeting_id', 'bot_id', 'status', 'error', 'created_at'
         )
 
         return JsonResponse({
