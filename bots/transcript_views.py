@@ -184,14 +184,14 @@ def is_participant(email: str, meeting: dict) -> bool:
     email_lower = email.lower()
 
     # Check organizer
-    if meeting.get('organizer_email', '').lower() == email_lower:
+    if (meeting.get('organizer_email') or '').lower() == email_lower:
         return True
 
     # Check participants list
     participants = meeting.get('participants') or []
     for p in participants:
         if isinstance(p, dict):
-            if p.get('email', '').lower() == email_lower:
+            if (p.get('email') or '').lower() == email_lower:
                 return True
         elif isinstance(p, str):
             if p.lower() == email_lower:
@@ -201,7 +201,7 @@ def is_participant(email: str, meeting: dict) -> bool:
     attendees = meeting.get('attendees') or []
     for a in attendees:
         if isinstance(a, dict):
-            if a.get('email', '').lower() == email_lower:
+            if (a.get('email') or '').lower() == email_lower:
                 return True
         elif isinstance(a, str):
             if a.lower() == email_lower:
