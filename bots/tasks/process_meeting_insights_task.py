@@ -63,11 +63,13 @@ Action items include:
 - Things to review: items to check, verify, or look into
 
 CRITICAL RULES:
-1. The assignee is the person SPEAKING when they make the commitment.
+1. ONLY assign action items to people in the Participants list. If someone else is mentioned, assign to the speaker.
+
+2. The assignee is the person SPEAKING when they make the commitment.
    - "Sam: Let me check on that" → Assignee is Sam
    - "Sam: Can you send the report?" "Luke: Sure" → Assignee is Luke
 
-2. EVERY action item MUST include the exact [MM:SS] timestamp from the transcript where it was discussed. This is REQUIRED - never omit timestamps."""
+3. EVERY action item MUST include the exact [MM:SS] timestamp from the transcript where it was discussed. This is REQUIRED - never omit timestamps."""
 
 
 def build_user_prompt(title, participants, transcript_text):
