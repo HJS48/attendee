@@ -164,6 +164,17 @@ def _sync_meeting_to_supabase_impl(bot_id: str):
             insight.save(update_fields=['supabase_meeting_id'])
             logger.info(f"Backfilled supabase_meeting_id on MeetingInsight for bot {bot_id}")
 
+            # Check if email was never sent - if so, re-enqueue insights task to send it
+            email_sent = PipelineActivity.objects.filter(
+                event_type=PipelineActivity.EventType.EMAIL_SENT,
+                status=PipelineActivity.Status.SUCCESS,
+                bot_id=bot_id,
+            ).exists()
+            if not email_sent:
+                from bots.tasks.process_meeting_insights_task import enqueue_process_meeting_insights_task
+                enqueue_process_meeting_insights_task(bot_id)
+                logger.info(f"Re-enqueued process_meeting_insights for bot {bot_id} to send email")
+
         # Also mirror insights to Supabase
         if supabase_meeting_id:
             upsert_meeting_insights(supabase_meeting_id, insight.summary, insight.action_items)
