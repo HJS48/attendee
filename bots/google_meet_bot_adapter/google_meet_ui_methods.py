@@ -23,6 +23,46 @@ class UiGoogleBlockingUsException(UiRetryableExpectedException):
 
 
 class GoogleMeetUIMethods:
+    def capture_and_upload_debug_screenshot(self, context: str):
+        """Capture screenshot and upload to S3 for remote debugging."""
+        try:
+            timestamp = int(time.time())
+            filename = f"debug_{self.bot_object_id}_{context}_{timestamp}.png"
+            local_path = f"/tmp/{filename}"
+            self.driver.save_screenshot(local_path)
+
+            from django.core.files.storage import default_storage
+            from django.core.files.base import ContentFile
+            with open(local_path, 'rb') as f:
+                s3_path = f"debug-screenshots/{filename}"
+                default_storage.save(s3_path, ContentFile(f.read()))
+            logger.warning(f"Debug screenshot uploaded: {s3_path}")
+        except Exception as e:
+            logger.warning(f"Failed to capture debug screenshot: {e}")
+
+    def log_visible_modals(self):
+        """Log any visible modal dialogs for debugging."""
+        try:
+            modals = self.driver.find_elements(By.CSS_SELECTOR, 'div[aria-modal="true"][role="dialog"]')
+            for modal in modals:
+                text = modal.text[:200] if modal.text else "(empty)"
+                logger.warning(f"Visible modal detected: {text}")
+        except Exception:
+            pass
+
+    def check_if_in_meeting_fallback(self) -> bool:
+        """Fallback check after 2+ mins of captions button failure."""
+        leave = self.find_element_by_selector(By.CSS_SELECTOR, 'button[aria-label="Leave call"]')
+        if leave:
+            logger.warning("Fallback: Leave button found - bot is in meeting")
+            return True
+        more_options = self.find_element_by_selector(By.CSS_SELECTOR, 'button[aria-label="More options"]')
+        if more_options:
+            logger.warning("Fallback: More options found - bot is in meeting")
+            return True
+        return False
+
+
     def locate_element(self, step, condition, wait_time_seconds=60):
         try:
             element = WebDriverWait(self.driver, wait_time_seconds).until(condition)
@@ -230,7 +270,13 @@ class GoogleMeetUIMethods:
         logger.info("Waiting for captions button...")
         waiting_room_timeout_started_at = time.time()
         logged_asking_to_be_let_in = False
+        last_screenshot_iteration = 0
         for attempt_to_look_for_captions_button_index in range(num_attempts_to_look_for_captions_button):
+            # Capture debug screenshot every 60 iterations (~60 seconds)
+            if attempt_to_look_for_captions_button_index > 0 and attempt_to_look_for_captions_button_index % 60 == 0:
+                self.capture_and_upload_debug_screenshot(f"captions_loop_iter_{attempt_to_look_for_captions_button_index}")
+                last_screenshot_iteration = attempt_to_look_for_captions_button_index
+
             # Check for "Asking to be let in" on first few attempts and log once
             if not logged_asking_to_be_let_in and attempt_to_look_for_captions_button_index < 10:
                 asking_element = self.find_element_by_selector(By.XPATH, '//*[contains(text(), "Asking to be let in")]')
@@ -257,11 +303,22 @@ class GoogleMeetUIMethods:
                     logger.info("Could not click captions button. Raising UiCouldNotClickElementException")
                     raise e
             except TimeoutException as e:
+                # Log visible modals for debugging
+                self.log_visible_modals()
+
                 self.look_for_blocked_element("click_captions_button")
                 self.look_for_denied_your_request_element("click_captions_button")
                 self.click_this_meeting_is_being_recorded_join_now_button("click_captions_button")
                 self.click_others_may_see_your_meeting_differently_button("click_captions_button")
                 self.check_if_waiting_room_timeout_exceeded(waiting_room_timeout_started_at, "click_captions_button")
+
+                # Fallback detection after 120 iterations (~2 mins)
+                if attempt_to_look_for_captions_button_index >= 120 and attempt_to_look_for_captions_button_index % 30 == 0:
+                    if self.check_if_in_meeting_fallback():
+                        logger.warning("Fallback detection: bot appears to be in meeting but captions button not found. Continuing without captions.")
+                        if self.bot_object_id:
+                            log_activity(self.bot_object_id, BotActivityLog.ActivityType.UI_ADMITTED_TO_MEETING, message="fallback detection")
+                        return
 
                 last_check_timed_out = attempt_to_look_for_captions_button_index == num_attempts_to_look_for_captions_button - 1
                 if last_check_timed_out:
